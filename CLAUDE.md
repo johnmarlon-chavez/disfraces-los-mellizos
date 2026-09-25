@@ -54,16 +54,19 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 ## Modelo de datos
 
 - **modelos**: id, nombre, categoría, descripción, precio_alquiler, foto, activo, prefijo, region
-  - prefijo: único por modelo, base de los códigos de sus unidades ("Spiderman" → SPI, "Spiderman Negro" → SPN).
+  - prefijo: único por modelo, base de los códigos de sus unidades ("Spiderman" → SPI, "Spiderman Negro" → SPN). Al crear el disfraz, el sistema sugiere uno y se puede editar; se valida que sea único.
   - region: `costa`, `sierra`, `selva` o vacío si no aplica (personajes, superhéroes...).
 - **unidades**: id, modelo_id, código (ej. SPI-001), talla, estado_fisico, observaciones
   - estado_fisico: `disponible`, `lavanderia`, `reparacion`, `baja`
   - "Alquilado" NO es un estado físico guardado: se deduce de los alquileres activos.
+  - talla: se elige de una lista fija (4, 6, 8, 10, 12, 14, 16, S, M, L, XL) o "Otra". Lo escrito en "Otra" se normaliza: sin espacios sobrantes y en mayúsculas.
 - **piezas**: id, unidad_id, nombre (máscara, peluca, guantes...), costo_reposicion
-- **clientes**: id, tipo, dni (único), nombres, responsable, dni_responsable, teléfono, dirección, observaciones, activo
+- **clientes**: id, tipo, dni (único), nombres, responsable, dni_responsable, distrito, ruc, teléfono, dirección, observaciones, activo
   - tipo: `persona`, `colegio`
   - dni: obligatorio solo para personas; único cuando existe.
   - responsable: profesora o coordinadora a cargo (para colegios). dni_responsable: su DNI.
+  - Los colegios se identifican por **nombre + distrito**. RUC opcional; sin código modular.
+  - Al registrar un colegio, avisar si ya existe uno con nombre parecido, para evitar duplicados.
 - **alquileres**: id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, fecha_devolucion_real, estado, garantia_tipo, garantia_monto, garantia_devuelta, evento, grado_seccion, observaciones
   - evento: texto libre con sugerencias (Día de la Madre, Fiestas Patrias, aniversario, primavera, clausura...).
   - grado_seccion: opcional (ej. "3.° B").
@@ -73,7 +76,8 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 - **cargos**: id, alquiler_id, unidad_id (opcional), tipo (`mora`, `dano`, `pieza_faltante`), monto, descripcion
 - **pagos**: id, alquiler_id, fecha, monto, concepto (`adelanto`, `saldo`, `garantia_recibida`, `garantia_devuelta`, `mora`, `dano`), medio (`efectivo`, `yape`, `plin`, `transferencia`, `tarjeta`)
 - **usuarios**: id, nombre, usuario, contraseña (hash con bcrypt), rol (`admin`, `empleado`), activo
-- **configuracion**: mora_por_dia, dias_margen_lavado, precio_por_dia, carpeta_respaldo, nombre_tienda
+- **configuracion**: mora_por_dia, modo_mora, dias_margen_lavado, precio_por_dia, carpeta_respaldo, nombre_tienda
+  - modo_mora: `por_unidad` (por defecto: días de retraso × mora_por_dia por cada unidad) o `por_pedido` (días de retraso × mora_por_dia una sola vez por pedido). Editable en Configuración.
 - **auditoria**: id, fecha, usuario_id, accion, entidad, entidad_id, detalle (JSON). Registra cambios de precio, de estado, bajas, etc.
 - **pendientes_confeccion**: id, alquiler_id, modelo_id, talla, cantidad, fecha_limite, estado, observaciones
   - estado: `pendiente`, `en_confeccion`, `listo`
@@ -105,11 +109,12 @@ La pantalla del pedido funciona como un carrito: cada vez que se agrega o quita 
 ### Edición de precios
 - El precio de cada disfraz se edita desde su ficha en la pantalla Disfraces, en cualquier momento, con un campo simple y visible. Tanto la dueña como la trabajadora pueden cambiarlo.
 - El cambio aplica a los pedidos nuevos. El precio de cada disfraz se copia al pedido al momento de agregarlo, así que los pedidos anteriores conservan el precio con el que se hicieron.
-- Dentro de un pedido, se puede ajustar el precio de un disfraz solo para ese pedido (por ejemplo, un descuento), sin tocar el precio general. El sistema guarda el precio original y el precio cobrado, para que la dueña vea en los reportes qué pedidos tuvieron descuento. Si se confirma que el precio es por día, el precio de cada disfraz se multiplica por la cantidad de días del alquiler.
+- Dentro de un pedido, se puede ajustar el precio de un disfraz solo para ese pedido (por ejemplo, un descuento), sin tocar el precio general. El sistema guarda el precio original y el precio cobrado, para que la dueña vea en los reportes qué pedidos tuvieron descuento. En pedidos grandes, opción **"Aplicar este precio a todos los del pedido"** (del mismo modelo) para no cambiarlos uno por uno. Si se confirma que el precio es por día, el precio de cada disfraz se multiplica por la cantidad de días del alquiler.
 2. **Entregar**: cobrar saldo → registrar garantía (efectivo o DNI en prenda) → estado `entregado`.
    - No se puede entregar un pedido con pendientes de confección sin resolver, salvo que **la dueña** confirme entregar lo disponible.
 3. **Devolver**: revisar cada unidad con checklist de sus piezas → calcular mora = días de retraso × mora_por_dia → registrar daños y piezas faltantes → descontar todo de la garantía → mostrar claramente cuánto se le devuelve al cliente o cuánto falta cobrar → unidades pasan a `lavanderia`.
-   - **Devolución parcial:** cada unidad se recibe por separado y la mora se calcula por unidad.
+   - **Devolución parcial:** cada unidad se recibe por separado y la mora se calcula por unidad (o por pedido, según `modo_mora`).
+   - El pedido sigue `entregado` hasta que vuelve la última unidad, y muestra siempre cuántas faltan (ej. "Faltan 3 de 30").
 4. **Liberar**: marcar unidades de `lavanderia` o `reparacion` como `disponible`.
 
 ### Historial del cliente
@@ -204,6 +209,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 
 ## Datos pendientes de confirmar con la dueña
 - Monto de la mora por día de retraso
+- Si la mora se cobra por unidad o por pedido (por defecto, por unidad)
 - Si el precio del alquiler es por evento o por día
 
 Mientras no estén confirmados, usar valores de ejemplo editables desde la pantalla de Configuración, nunca valores fijos en el código.
