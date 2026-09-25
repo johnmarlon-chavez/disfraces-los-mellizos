@@ -36,7 +36,12 @@ export async function lanzarApp(): Promise<AppDePrueba> {
 export async function ventanaMinima(app: ElectronApplication, ventana: Page): Promise<void> {
   // La app maximiza la ventana al mostrarla; esperar a eso para que no pise el nuevo tamaño.
   await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible() ?? false))
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0]
+        return !!win && win.isVisible() && win.isMaximized()
+      })
+    )
     .toBe(true)
   await app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0]

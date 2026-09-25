@@ -29,7 +29,8 @@ export function ProveedorAvisos({ children }: { children: ReactNode }): React.JS
   const agregar = useCallback(
     (tipo: Aviso['tipo'], mensaje: string) => {
       const id = siguienteId.current++
-      setAvisos((a) => [...a, { id, tipo, mensaje }])
+      // Como máximo dos a la vez, para no tapar la pantalla.
+      setAvisos((a) => [...a, { id, tipo, mensaje }].slice(-2))
       setTimeout(() => quitar(id), tipo === 'error' ? 10000 : 4000)
     },
     [quitar]

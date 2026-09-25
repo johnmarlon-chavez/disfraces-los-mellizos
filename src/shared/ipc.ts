@@ -2,6 +2,13 @@
 // Cada canal declara sus argumentos y su resultado; el preload y los handlers
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
 import type {
+  ColegioParecido,
+  DatosCliente,
+  FichaCliente,
+  ResumenCliente,
+  TipoDocumento
+} from './clientes'
+import type {
   DatosModelo,
   DatosUnidad,
   EstadoFisico,
@@ -56,6 +63,22 @@ export interface CanalesIpc {
   'unidades:crear': { args: [datos: NuevasUnidades]; resultado: void }
   'unidades:actualizar': { args: [id: number, datos: DatosUnidad]; resultado: void }
   'unidades:cambiarEstado': { args: [id: number, estado: EstadoFisico]; resultado: void }
+
+  'clientes:listar': { args: []; resultado: ResumenCliente[] }
+  'clientes:obtener': { args: [id: number]; resultado: FichaCliente }
+  'clientes:crear': { args: [datos: DatosCliente]; resultado: number }
+  'clientes:actualizar': { args: [id: number, datos: DatosCliente]; resultado: void }
+  'clientes:desactivar': { args: [id: number]; resultado: void }
+  'clientes:reactivar': { args: [id: number]; resultado: void }
+  'clientes:distritos': { args: []; resultado: string[] }
+  'clientes:porDocumento': {
+    args: [tipo: TipoDocumento, numero: string]
+    resultado: { id: number; nombres: string } | null
+  }
+  'clientes:colegiosParecidos': {
+    args: [nombre: string, distrito: string, excluirId: number | null]
+    resultado: ColegioParecido[]
+  }
 }
 
 export type NombreCanal = keyof CanalesIpc
@@ -88,5 +111,16 @@ export interface ApiDisfraces {
     crear: Metodo<'unidades:crear'>
     actualizar: Metodo<'unidades:actualizar'>
     cambiarEstado: Metodo<'unidades:cambiarEstado'>
+  }
+  clientes: {
+    listar: Metodo<'clientes:listar'>
+    obtener: Metodo<'clientes:obtener'>
+    crear: Metodo<'clientes:crear'>
+    actualizar: Metodo<'clientes:actualizar'>
+    desactivar: Metodo<'clientes:desactivar'>
+    reactivar: Metodo<'clientes:reactivar'>
+    distritos: Metodo<'clientes:distritos'>
+    porDocumento: Metodo<'clientes:porDocumento'>
+    colegiosParecidos: Metodo<'clientes:colegiosParecidos'>
   }
 }

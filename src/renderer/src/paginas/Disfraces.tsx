@@ -11,7 +11,7 @@ import {
 } from '../../../shared/disfraces'
 import { formatearSoles } from '../../../shared/formato'
 import { llamar, mensajeDe } from '../api'
-import { filtroInicial, recordarFiltro } from './busquedaDisfraces'
+import { memoriaDisfraces } from '../memoriaFiltros'
 import { clasesBoton } from '../componentes/ui/Boton'
 import { CampoTexto, Selector } from '../componentes/ui/Campos'
 
@@ -24,11 +24,11 @@ function ListaDisfraces(): React.JSX.Element {
   const [modelos, setModelos] = useState<ResumenModelo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const estadoNavegacion = useLocation().state
-  const [filtro, setFiltro] = useState<FiltroModelos>(() => filtroInicial(estadoNavegacion))
+  const [filtro, setFiltro] = useState<FiltroModelos>(() => memoriaDisfraces.inicial(estadoNavegacion))
   const cambiar = <K extends keyof FiltroModelos>(clave: K, valor: FiltroModelos[K]): void => {
     const nuevo = { ...filtro, [clave]: valor }
     setFiltro(nuevo)
-    recordarFiltro(nuevo)
+    memoriaDisfraces.recordar(nuevo)
   }
 
   useEffect(() => {

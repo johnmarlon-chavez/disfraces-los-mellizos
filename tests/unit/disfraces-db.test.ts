@@ -40,7 +40,7 @@ function auditoria(accion: string) {
 
 /** Crea un alquiler en el estado indicado con la unidad dada. */
 function alquilar(codigo: string, estado: 'reservado' | 'entregado' | 'devuelto' | 'cancelado') {
-  const cliente = db.prepare("INSERT INTO clientes (dni, nombres) VALUES (?, 'Cliente')").run(String(Math.random()).slice(2, 10))
+  const cliente = db.prepare("INSERT INTO clientes (tipo_documento, numero_documento, nombres) VALUES ('dni', ?, 'Cliente')").run(String(Math.random()).slice(2, 10))
   const alquiler = db
     .prepare(
       `INSERT INTO alquileres (cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, estado)

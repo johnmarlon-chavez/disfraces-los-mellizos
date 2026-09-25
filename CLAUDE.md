@@ -8,6 +8,7 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 
 ## Contexto del negocio
 
+- La tienda está en **Trujillo** (La Libertad).
 - La tienda alquila disfraces principalmente para **colegios**: danzas folclóricas peruanas de la **Costa** (marinera, festejo, tondero), la **Sierra** (huaylas, diablada, caporales) y la **Selva** (pandilla, danza de la anaconda), además de personajes para actuaciones escolares.
 - **Dos tipos de cliente:**
   - **Colegios**, que llegan con pedidos grandes para un evento (por ejemplo, 30 trajes de huaylas para el Día de la Madre).
@@ -61,10 +62,12 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
   - "Alquilado" NO es un estado físico guardado: se deduce de los alquileres activos.
   - talla: se elige de una lista fija (4, 6, 8, 10, 12, 14, 16, S, M, L, XL) o "Otra". Lo escrito en "Otra" se normaliza: sin espacios sobrantes y en mayúsculas.
 - **piezas**: id, unidad_id, nombre (máscara, peluca, guantes...), costo_reposicion
-- **clientes**: id, tipo, dni (único), nombres, responsable, dni_responsable, distrito, ruc, teléfono, dirección, observaciones, activo
+- **clientes**: id, tipo, tipo_documento, numero_documento, nombres, responsable, dni_responsable, distrito, ruc, teléfono, dirección, observaciones, activo
   - tipo: `persona`, `colegio`
-  - dni: obligatorio solo para personas; único cuando existe.
-  - responsable: profesora o coordinadora a cargo (para colegios). dni_responsable: su DNI.
+  - Documento (antes `dni`): solo para personas, obligatorio. tipo_documento: `dni` (8 dígitos), `ce` (carné de extranjería) o `pasaporte` (6 a 12 letras o números). Único por tipo + número.
+  - teléfono: obligatorio para todos. Celular de 9 dígitos que empieza con 9, o fijo (con código de ciudad, ej. 044 123456). Se guarda solo con dígitos.
+  - Distrito: sugerencias de los distritos de la provincia de Trujillo más los ya usados; se puede escribir cualquier otro.
+  - responsable: profesora o coordinadora a cargo (para colegios). dni_responsable: su DNI. Ambos obligatorios para colegios (la garantía suele ser el DNI de la responsable).
   - Los colegios se identifican por **nombre + distrito**. RUC opcional; sin código modular.
   - Al registrar un colegio, avisar si ya existe uno con nombre parecido, para evitar duplicados.
 - **alquileres**: id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, fecha_devolucion_real, estado, garantia_tipo, garantia_monto, garantia_devuelta, evento, grado_seccion, observaciones
@@ -206,7 +209,9 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `fotos.ts` — diálogo, reducción a 1200 px y protocolo `fotos://archivo/<nombre>`, que solo sirve archivos de la carpeta de fotos.
 - `src/preload/` — expone `window.api` según el contrato.
 - `src/renderer/` — React + Tailwind. Componentes base en `componentes/ui/` (Boton, CampoTexto, Dialogo, `useConfirmar()`, `useAvisos()`); usarlos en vez de `confirm()`/`alert()`. Para tallas usar `SelectorTalla` (lista fija + "Otra…") y para regiones `SelectorRegion`.
-- Migraciones en `src/main/db/migraciones/`: agregar un archivo nuevo al final de la lista; nunca editar una migración ya publicada. La versión se guarda en `PRAGMA user_version`.
+- Migraciones en `src/main/db/migraciones/`: agregar un archivo nuevo al final de la lista; nunca editar una migración ya publicada. La versión se guarda en `PRAGMA user_version`. Para reconstruir una tabla (SQLite no permite quitar `NOT NULL` ni cambiar restricciones), marcar la migración con `sinClavesForaneas: true`: el runner desactiva las claves foráneas fuera de la transacción, verifica `foreign_key_check` antes de confirmar y las reactiva siempre (ver `004_clientes_colegios.ts`).
+- `src/renderer/src/componentes/clientes/FormularioCliente.tsx` — formulario de persona o colegio reutilizable (lo usará la pantalla del pedido en la fase 4), con avisos de documento repetido y de colegio parecido. `onUsarExistente(id)` recibe el cliente elegido.
+- `src/renderer/src/memoriaFiltros.ts` — conserva los filtros de cada lista al volver desde una ficha (`VOLVER_CON_FILTROS`).
 
 ## Datos pendientes de confirmar con la dueña
 - Monto de la mora por día de retraso

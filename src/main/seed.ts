@@ -191,13 +191,21 @@ const MODELOS: ModeloSemilla[] = [
   }
 ]
 
-// Datos ficticios.
-const CLIENTES: [string, string, string, string][] = [
-  ['40123456', 'María Quispe Huamán', '987654321', 'Av. Los Olivos 123, SMP'],
-  ['41234567', 'José Ramírez Flores', '976543210', 'Jr. Las Flores 456, Comas'],
-  ['42345678', 'Rosa Mendoza Torres', '965432109', 'Calle Los Pinos 789, Los Olivos'],
-  ['43456789', 'Carlos Vargas Chávez', '954321098', 'Av. Universitaria 1020, SMP'],
-  ['44567890', 'Lucía Paredes Rojas', '943210987', 'Mz. B Lt. 5, Independencia']
+// Datos ficticios (Trujillo).
+const PERSONAS: [string, string, string, string, string][] = [
+  ['dni', '40123456', 'María Quispe Huamán', '987654321', 'Av. España 1234, Trujillo'],
+  ['dni', '41234567', 'José Ramírez Flores', '976543210', 'Jr. Pizarro 456, Trujillo'],
+  ['dni', '42345678', 'Rosa Mendoza Torres', '965432109', 'Calle Los Pinos 789, La Esperanza'],
+  ['dni', '43456789', 'Carlos Vargas Chávez', '044234567', 'Av. Larco 1020, Víctor Larco Herrera'],
+  ['ce', '001234567', 'Ana Lucía Pérez Rojas', '943210987', 'Mz. B Lt. 5, El Porvenir']
+]
+
+// Dos colegios con nombres parecidos a propósito, para probar el aviso de duplicados.
+const COLEGIOS: [string, string, string, string, string, string | null][] = [
+  ['I.E. Los Girasoles', 'La Esperanza', 'Carmen Rojas Vega', '45678901', '949111222', null],
+  ['IE Los Girasoles', 'El Porvenir', 'Julia Sánchez Mori', '46789012', '949333444', null],
+  ['Colegio Santa Rosita', 'Trujillo', 'Patricia Díaz León', '47890123', '044345678', '20481234567'],
+  ['I.E.P. Nuevo Amanecer', 'Víctor Larco Herrera', 'Rocío Castillo Paz', '48901234', '958555666', '20487654321']
 ]
 
 function sembrar(db: Database.Database): void {
@@ -206,7 +214,12 @@ function sembrar(db: Database.Database): void {
   )
   const insUnidad = db.prepare('INSERT INTO unidades (modelo_id, codigo, talla, estado_fisico) VALUES (?, ?, ?, ?)')
   const insPieza = db.prepare('INSERT INTO piezas (unidad_id, nombre, costo_reposicion) VALUES (?, ?, ?)')
-  const insCliente = db.prepare('INSERT INTO clientes (dni, nombres, telefono, direccion) VALUES (?, ?, ?, ?)')
+  const insPersona = db.prepare(
+    "INSERT INTO clientes (tipo, tipo_documento, numero_documento, nombres, telefono, direccion) VALUES ('persona', ?, ?, ?, ?, ?)"
+  )
+  const insColegio = db.prepare(
+    "INSERT INTO clientes (tipo, nombres, distrito, responsable, dni_responsable, telefono, ruc) VALUES ('colegio', ?, ?, ?, ?, ?, ?)"
+  )
 
   db.transaction(() => {
     let n = 0
@@ -225,7 +238,8 @@ function sembrar(db: Database.Database): void {
         }
       }
     }
-    for (const c of CLIENTES) insCliente.run(...c)
+    for (const p of PERSONAS) insPersona.run(...p)
+    for (const c of COLEGIOS) insColegio.run(...c)
   })()
 }
 

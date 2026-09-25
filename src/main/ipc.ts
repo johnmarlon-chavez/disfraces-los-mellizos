@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3'
 import type { ArgsDe, NombreCanal, Resultado, ResultadoDe, InfoApp } from '../shared/ipc'
 import { mensajeParaUsuario } from './errores'
 import { obtenerConfiguracion } from './db/configuracion'
+import * as clientes from './db/clientes'
 import * as disfraces from './db/disfraces'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
@@ -50,4 +51,16 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('unidades:crear', (datos) => disfraces.crearUnidades(db, datos, obtenerSesion()))
   manejar('unidades:actualizar', (id, datos) => disfraces.actualizarUnidad(db, id, datos, obtenerSesion()))
   manejar('unidades:cambiarEstado', (id, estado) => disfraces.cambiarEstadoUnidad(db, id, estado, obtenerSesion()))
+
+  manejar('clientes:listar', () => clientes.listarClientes(db))
+  manejar('clientes:obtener', (id) => clientes.obtenerFichaCliente(db, id))
+  manejar('clientes:crear', (datos) => clientes.crearCliente(db, datos, obtenerSesion()))
+  manejar('clientes:actualizar', (id, datos) => clientes.actualizarCliente(db, id, datos, obtenerSesion()))
+  manejar('clientes:desactivar', (id) => clientes.desactivarCliente(db, id, obtenerSesion()))
+  manejar('clientes:reactivar', (id) => clientes.reactivarCliente(db, id, obtenerSesion()))
+  manejar('clientes:distritos', () => clientes.listarDistritos(db))
+  manejar('clientes:porDocumento', (tipo, numero) => clientes.buscarPorDocumento(db, tipo, numero))
+  manejar('clientes:colegiosParecidos', (nombre, distrito, excluirId) =>
+    clientes.buscarColegiosParecidos(db, nombre, distrito, excluirId)
+  )
 }

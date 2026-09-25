@@ -21,7 +21,7 @@ function crearAlquilerConUnidad(): { alquilerId: number | bigint; unidadId: numb
     .prepare("INSERT INTO unidades (modelo_id, codigo, talla) VALUES (?, 'PIR-001', 'M')")
     .run(modeloId).lastInsertRowid
   const clienteId = db
-    .prepare("INSERT INTO clientes (dni, nombres) VALUES ('40123456', 'María Quispe')")
+    .prepare("INSERT INTO clientes (tipo_documento, numero_documento, nombres) VALUES ('dni', '40123456', 'María Quispe')")
     .run().lastInsertRowid
   const alquilerId = db
     .prepare(
@@ -128,7 +128,7 @@ describe('esquema inicial', () => {
 
   it('el DNI del cliente es único', () => {
     crearAlquilerConUnidad()
-    expect(() => db.prepare("INSERT INTO clientes (dni, nombres) VALUES ('40123456', 'Otra persona')").run()).toThrow(
+    expect(() => db.prepare("INSERT INTO clientes (tipo_documento, numero_documento, nombres) VALUES ('dni', '40123456', 'Otra persona')").run()).toThrow(
       /UNIQUE/
     )
   })

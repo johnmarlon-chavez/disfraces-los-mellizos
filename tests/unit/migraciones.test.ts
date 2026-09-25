@@ -33,7 +33,7 @@ describe('aplicarMigraciones', () => {
   it('conserva los datos existentes al reabrir la base', () => {
     const ruta = archivoTemporal()
     const db1 = abrirBaseDeDatos(ruta)
-    db1.prepare("INSERT INTO clientes (dni, nombres) VALUES ('40123456', 'María Quispe')").run()
+    db1.prepare("INSERT INTO clientes (tipo_documento, numero_documento, nombres) VALUES ('dni', '40123456', 'María Quispe')").run()
     db1.close()
 
     const db2 = abrirBaseDeDatos(ruta)
@@ -119,6 +119,106 @@ describe('aplicarMigraciones', () => {
     expect(db.prepare('SELECT modo_mora FROM configuracion').get()).toEqual({ modo_mora: 'por_unidad' })
     expect(() => db.prepare("UPDATE modelos SET region = 'puna'").run()).toThrow(/CHECK/)
     expect(() => db.prepare("UPDATE configuracion SET modo_mora = 'por_dia'").run()).toThrow(/CHECK/)
+  })
+
+  describe('migraciones que reconstruyen tablas (sinClavesForaneas)', () => {
+    const base: Migracion = {
+      version: 1,
+      nombre: 'base',
+      aplicar: (d) =>
+        d.exec(`
+          CREATE TABLE padres (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+          CREATE TABLE hijos (id INTEGER PRIMARY KEY, padre_id INTEGER NOT NULL REFERENCES padres (id));
+          INSERT INTO padres VALUES (1, 'uno'), (2, 'dos');
+          INSERT INTO hijos VALUES (10, 1), (20, 2);
+        `)
+    }
+
+    function baseConReferencias(): Database.Database {
+      const db = new Database(':memory:')
+      db.pragma('foreign_keys = ON')
+      aplicarMigraciones(db, [base])
+      return db
+    }
+
+    const reconstruir = (copiarTodo: boolean): Migracion => ({
+      version: 2,
+      nombre: 'reconstruir',
+      sinClavesForaneas: true,
+      aplicar: (d) =>
+        d.exec(`
+          CREATE TABLE padres_nueva (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, extra TEXT);
+          INSERT INTO padres_nueva (id, nombre) SELECT id, nombre FROM padres ${copiarTodo ? '' : 'WHERE id = 1'};
+          DROP TABLE padres;
+          ALTER TABLE padres_nueva RENAME TO padres;
+        `)
+    })
+
+    it('conserva datos y referencias, y deja las claves foráneas activas', () => {
+      const db = baseConReferencias()
+      aplicarMigraciones(db, [base, reconstruir(true)])
+      expect(db.prepare('SELECT id, nombre FROM padres ORDER BY id').all()).toEqual([
+        { id: 1, nombre: 'uno' },
+        { id: 2, nombre: 'dos' }
+      ])
+      expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
+      expect(() => db.prepare('INSERT INTO hijos VALUES (30, 99)').run()).toThrow(/FOREIGN KEY/)
+    })
+
+    it('si deja referencias rotas, deshace todo y las claves foráneas siguen activas', () => {
+      const db = baseConReferencias()
+      expect(() =>
+        aplicarMigraciones(db, [base, reconstruir(false)])
+      ).toThrow(/referencias rotas/)
+      expect(versionActual(db)).toBe(1)
+      expect(db.prepare('SELECT COUNT(*) AS n FROM padres').get()).toEqual({ n: 2 })
+      expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
+    })
+
+    it('si la migración lanza un error, las claves foráneas siguen activas', () => {
+      const db = baseConReferencias()
+      const rota: Migracion = {
+        version: 2,
+        nombre: 'rota',
+        sinClavesForaneas: true,
+        aplicar: () => {
+          throw new Error('falla a propósito')
+        }
+      }
+      expect(() => aplicarMigraciones(db, [base, rota])).toThrow('falla a propósito')
+      expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
+    })
+  })
+
+  it('la migración 004 convierte los clientes en personas con DNI y conserva los alquileres', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    aplicarMigraciones(db, MIGRACIONES.slice(0, 3))
+    db.exec(`
+      INSERT INTO clientes (id, dni, nombres, telefono) VALUES (7, '40123456', 'María Quispe', '987654321');
+      INSERT INTO alquileres (cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada)
+        VALUES (7, '2026-10-01', '2026-10-05', '2026-10-07');
+    `)
+    aplicarMigraciones(db)
+    expect(db.prepare('SELECT id, tipo, tipo_documento, numero_documento, nombres, telefono FROM clientes').get()).toEqual({
+      id: 7,
+      tipo: 'persona',
+      tipo_documento: 'dni',
+      numero_documento: '40123456',
+      nombres: 'María Quispe',
+      telefono: '987654321'
+    })
+    expect(db.prepare('SELECT cliente_id FROM alquileres').get()).toEqual({ cliente_id: 7 })
+    expect(db.pragma('foreign_key_check')).toEqual([])
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
+    // Las referencias apuntan a la tabla nueva
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO alquileres (cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada) VALUES (99, '2026-10-01', '2026-10-05', '2026-10-07')"
+        )
+        .run()
+    ).toThrow(/FOREIGN KEY/)
   })
 
   it('avisa con un mensaje claro si la base es de una versión más nueva del programa', () => {

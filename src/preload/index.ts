@@ -28,6 +28,17 @@ const api: ApiDisfraces = {
     crear: canal('unidades:crear'),
     actualizar: canal('unidades:actualizar'),
     cambiarEstado: canal('unidades:cambiarEstado')
+  },
+  clientes: {
+    listar: canal('clientes:listar'),
+    obtener: canal('clientes:obtener'),
+    crear: canal('clientes:crear'),
+    actualizar: canal('clientes:actualizar'),
+    desactivar: canal('clientes:desactivar'),
+    reactivar: canal('clientes:reactivar'),
+    distritos: canal('clientes:distritos'),
+    porDocumento: canal('clientes:porDocumento'),
+    colegiosParecidos: canal('clientes:colegiosParecidos')
   }
 }
 
