@@ -182,6 +182,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 | `npm install` | Instala dependencias y descarga el binario precompilado de better-sqlite3 para Electron (`postinstall`). |
 | `npm run dev` | App en modo desarrollo con recarga en caliente. Datos en `Documentos\SistemaDisfraces-dev\`. |
 | `npm run seed` | Carga datos de prueba en la base de desarrollo (solo si está vacía). |
+| `npm run seed:reiniciar` | Guarda la base de desarrollo actual como `datos-anterior-<fecha>.db` (no la borra) y vuelve a cargar los datos de prueba. |
 | `npm test` | Pruebas unitarias con Vitest (corren dentro de Electron). |
 | `npm run test:e2e` | Compila y ejecuta las pruebas E2E con Playwright (usa una carpeta de datos temporal). |
 | `npm run typecheck` | Verificación de tipos (main/preload y renderer). |
@@ -196,7 +197,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - `DISFRACES_DATOS_DIR` cambia la carpeta de datos (lo usan las pruebas E2E).
 
 ### Estructura
-- `src/shared/` — contrato IPC tipado (`ipc.ts`) y formatos de soles/fechas; lo usan main, preload y renderer.
+- `src/shared/` — contrato IPC tipado (`ipc.ts`), formatos de soles/fechas y reglas compartidas de disfraces (`disfraces.ts`: `TALLAS`, `normalizarTalla`, `compararTallas`/`ordenarTallas`, `filtrarModelos`); lo usan main, preload y renderer. Ordenar tallas siempre con `compararTallas`, nunca con orden alfabético.
 - `src/main/` — proceso main:
   - `logica/` — reglas de negocio puras, sin base de datos (prefijos, códigos, transiciones de estado, validaciones).
   - `db/` — conexión, migraciones y acceso a datos; cada escritura en una transacción con su registro en `auditoria`.
@@ -204,7 +205,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `sesion.ts` — cuenta actual y `exigirDuena()`. **Fase 7:** hoy la sesión es `null` y se permite todo; al agregar el login, dar de baja y reactivar quedarán solo para la dueña sin cambiar nada más.
   - `fotos.ts` — diálogo, reducción a 1200 px y protocolo `fotos://archivo/<nombre>`, que solo sirve archivos de la carpeta de fotos.
 - `src/preload/` — expone `window.api` según el contrato.
-- `src/renderer/` — React + Tailwind. Componentes base en `componentes/ui/` (Boton, CampoTexto, Dialogo, `useConfirmar()`, `useAvisos()`); usarlos en vez de `confirm()`/`alert()`.
+- `src/renderer/` — React + Tailwind. Componentes base en `componentes/ui/` (Boton, CampoTexto, Dialogo, `useConfirmar()`, `useAvisos()`); usarlos en vez de `confirm()`/`alert()`. Para tallas usar `SelectorTalla` (lista fija + "Otra…") y para regiones `SelectorRegion`.
 - Migraciones en `src/main/db/migraciones/`: agregar un archivo nuevo al final de la lista; nunca editar una migración ya publicada. La versión se guarda en `PRAGMA user_version`.
 
 ## Datos pendientes de confirmar con la dueña

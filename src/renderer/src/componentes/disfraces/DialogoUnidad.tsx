@@ -6,6 +6,7 @@ import { CampoTexto } from '../ui/Campos'
 import Dialogo from '../ui/Dialogo'
 import EditorPiezas, { filasAPiezas, piezasAFilas, type FilaPieza } from './EditorPiezas'
 import EtiquetaEstado from './EtiquetaEstado'
+import SelectorTalla from './SelectorTalla'
 
 interface Props {
   unidad: Unidad
@@ -68,8 +69,8 @@ export default function DialogoUnidad({ unidad, onCerrar, onGuardado, onDarDeBaj
         <div className="flex items-center gap-3 text-lg">
           Estado: <EtiquetaEstado unidad={unidad} />
         </div>
-        <div className="grid grid-cols-[10rem_1fr] gap-4">
-          <CampoTexto etiqueta="Talla" valor={talla} onCambio={setTalla} />
+        <div className="grid grid-cols-[16rem_1fr] gap-4">
+          <SelectorTalla valor={talla} onCambio={setTalla} />
           <CampoTexto
             etiqueta="Observaciones"
             valor={observaciones}

@@ -10,6 +10,23 @@ export const NOMBRE_ESTADO: Record<EstadoFisico, string> = {
   baja: 'De baja'
 }
 
+export const REGIONES = ['costa', 'sierra', 'selva'] as const
+export type Region = (typeof REGIONES)[number]
+
+export const NOMBRE_REGION: Record<Region, string> = {
+  costa: 'Costa',
+  sierra: 'Sierra',
+  selva: 'Selva'
+}
+
+/** Tallas de la lista fija, en su orden lógico. Cualquier otra se registra como "Otra". */
+export const TALLAS = ['4', '6', '8', '10', '12', '14', '16', 'S', 'M', 'L', 'XL'] as const
+
+/** Talla escrita a mano: sin espacios sobrantes y en mayúsculas (" xl " -> "XL"). */
+export function normalizarTalla(talla: string): string {
+  return talla.trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
 export interface PiezaDatos {
   nombre: string
   costoReposicion: number
@@ -40,6 +57,7 @@ export interface ResumenModelo {
   id: number
   nombre: string
   categoria: string
+  region: Region | null
   precioAlquiler: number
   foto: string | null
   activo: boolean
@@ -50,6 +68,7 @@ export interface FichaModelo {
   id: number
   nombre: string
   categoria: string
+  region: Region | null
   descripcion: string
   precioAlquiler: number
   foto: string | null
@@ -61,10 +80,13 @@ export interface FichaModelo {
 export interface DatosModelo {
   nombre: string
   categoria: string
+  region: Region | null
   descripcion: string
 }
 export interface NuevoModelo extends DatosModelo {
   precioAlquiler: number
+  /** Prefijo elegido por la usuaria; si falta, se genera uno a partir del nombre. */
+  prefijo?: string
 }
 
 export interface NuevasUnidades {
@@ -90,39 +112,53 @@ export function normalizarTexto(texto: string): string {
 }
 
 export function mismaTalla(a: string, b: string): boolean {
-  return normalizarTexto(a) === normalizarTexto(b)
+  return normalizarTalla(a) === normalizarTalla(b)
 }
 
 export function unidadDisponible(u: UnidadResumen): boolean {
   return u.estadoFisico === 'disponible' && !u.alquilada
 }
 
-const ORDEN_LETRAS = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl']
+const ORDEN_LETRAS = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL']
 
-/** Tallas únicas en orden natural: 2, 4, 6, 8, 10... y luego XS, S, M, L, XL... */
+function pesoTalla(talla: string): [number, number, string] {
+  const t = normalizarTalla(talla)
+  if (/^\d+(\.\d+)?$/.test(t)) return [0, Number(t), t]
+  const i = ORDEN_LETRAS.indexOf(t)
+  if (i >= 0) return [1, i, t]
+  return [2, 0, t]
+}
+
+/**
+ * Orden lógico de tallas, nunca alfabético: numéricas de menor a mayor (4, 6, 8, 10...),
+ * luego de letra (S, M, L, XL) y al final cualquier otra en orden alfabético.
+ */
+export function compararTallas(a: string, b: string): number {
+  const [ga, na, sa] = pesoTalla(a)
+  const [gb, nb, sb] = pesoTalla(b)
+  return ga - gb || na - nb || sa.localeCompare(sb, 'es')
+}
+
+/** Tallas únicas (sin distinguir mayúsculas ni espacios) en orden lógico. */
 export function ordenarTallas(tallas: string[]): string[] {
   const unicas = new Map<string, string>()
   for (const t of tallas) {
-    const clave = normalizarTexto(t)
-    if (clave && !unicas.has(clave)) unicas.set(clave, t.trim())
+    const clave = normalizarTalla(t)
+    if (clave && !unicas.has(clave)) unicas.set(clave, clave)
   }
-  const peso = (t: string): [number, number, string] => {
-    const n = normalizarTexto(t)
-    if (/^\d+(\.\d+)?$/.test(n)) return [0, Number(n), n]
-    const i = ORDEN_LETRAS.indexOf(n)
-    if (i >= 0) return [1, i, n]
-    return [2, 0, n]
-  }
-  return [...unicas.values()].sort((a, b) => {
-    const [ga, na, sa] = peso(a)
-    const [gb, nb, sb] = peso(b)
-    return ga - gb || na - nb || sa.localeCompare(sb, 'es')
-  })
+  return [...unicas.values()].sort(compararTallas)
+}
+
+/** Unidades en orden de talla y, dentro de cada talla, por código. */
+export function ordenarUnidades<T extends { talla: string; codigo: string }>(unidades: T[]): T[] {
+  return [...unidades].sort((a, b) => compararTallas(a.talla, b.talla) || a.codigo.localeCompare(b.codigo, 'es'))
 }
 
 export interface FiltroModelos {
   texto: string
   categoria: string
+  /** '' = todas; 'ninguna' = modelos sin región. */
+  region: Region | 'ninguna' | ''
   talla: string
   incluirBaja: boolean
 }
@@ -136,7 +172,7 @@ export interface ModeloFiltrado {
 
 /**
  * Filtra la lista de disfraces mientras se escribe. El texto busca en nombre,
- * categoría y códigos de unidad; todas las palabras deben coincidir.
+ * categoría, región y códigos de unidad; todas las palabras deben coincidir.
  * Con filtro de talla, solo quedan los modelos que tienen esa talla.
  */
 export function filtrarModelos(modelos: ResumenModelo[], filtro: FiltroModelos): ModeloFiltrado[] {
@@ -146,9 +182,14 @@ export function filtrarModelos(modelos: ResumenModelo[], filtro: FiltroModelos):
   for (const modelo of modelos) {
     if (!modelo.activo && !filtro.incluirBaja) continue
     if (filtro.categoria && modelo.categoria !== filtro.categoria) continue
+    if (filtro.region === 'ninguna' && modelo.region !== null) continue
+    if (filtro.region && filtro.region !== 'ninguna' && modelo.region !== filtro.region) continue
 
     if (palabras.length > 0) {
-      const texto = normalizarTexto([modelo.nombre, modelo.categoria, ...modelo.unidades.map((u) => u.codigo)].join(' '))
+      const region = modelo.region ? NOMBRE_REGION[modelo.region] : ''
+      const texto = normalizarTexto(
+        [modelo.nombre, modelo.categoria, region, ...modelo.unidades.map((u) => u.codigo)].join(' ')
+      )
       if (!palabras.every((p) => texto.includes(p))) continue
     }
 

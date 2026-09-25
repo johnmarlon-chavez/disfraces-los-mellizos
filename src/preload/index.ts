@@ -13,6 +13,8 @@ const api: ApiDisfraces = {
     obtener: canal('modelos:obtener'),
     categorias: canal('modelos:categorias'),
     crear: canal('modelos:crear'),
+    sugerirPrefijo: canal('modelos:sugerirPrefijo'),
+    cambiarPrefijo: canal('modelos:cambiarPrefijo'),
     actualizar: canal('modelos:actualizar'),
     cambiarPrecio: canal('modelos:cambiarPrecio'),
     darDeBaja: canal('modelos:darDeBaja'),

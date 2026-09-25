@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router'
-import { filtrarModelos, ordenarTallas, urlFoto, type FiltroModelos, type ResumenModelo } from '../../../shared/disfraces'
+import {
+  NOMBRE_REGION,
+  REGIONES,
+  filtrarModelos,
+  ordenarTallas,
+  urlFoto,
+  type FiltroModelos,
+  type ResumenModelo
+} from '../../../shared/disfraces'
 import { formatearSoles } from '../../../shared/formato'
 import { llamar, mensajeDe } from '../api'
 import { filtroInicial, recordarFiltro } from './busquedaDisfraces'
@@ -48,12 +56,12 @@ function ListaDisfraces(): React.JSX.Element {
         </Link>
       </div>
 
-      <div className="mb-6 grid grid-cols-[1fr_11rem_14rem] items-end gap-4 rounded-lg bg-white p-4 shadow">
+      <div className="mb-6 grid grid-cols-[1fr_9rem_10rem_13rem] items-end gap-4 rounded-lg bg-white p-4 shadow">
         <CampoTexto
           etiqueta="Buscar"
           valor={filtro.texto}
           onCambio={(v) => cambiar('texto', v)}
-          entrada={{ autoFocus: true, placeholder: 'Nombre, categoría o código (ej. ARA-002)', type: 'search' }}
+          entrada={{ autoFocus: true, placeholder: 'Nombre, región o código', type: 'search' }}
         />
         <Selector
           etiqueta="Talla"
@@ -62,12 +70,22 @@ function ListaDisfraces(): React.JSX.Element {
           opciones={[{ valor: '', texto: 'Todas' }, ...tallas.map((t) => ({ valor: t, texto: t }))]}
         />
         <Selector
+          etiqueta="Región"
+          valor={filtro.region}
+          onCambio={(v) => cambiar('region', v as FiltroModelos['region'])}
+          opciones={[
+            { valor: '', texto: 'Todas' },
+            ...REGIONES.map((r) => ({ valor: r, texto: NOMBRE_REGION[r] })),
+            { valor: 'ninguna', texto: 'Sin región' }
+          ]}
+        />
+        <Selector
           etiqueta="Categoría"
           valor={filtro.categoria}
           onCambio={(v) => cambiar('categoria', v)}
           opciones={[{ valor: '', texto: 'Todas' }, ...categorias.map((c) => ({ valor: c, texto: c }))]}
         />
-        <label className="col-span-3 flex items-center gap-2 text-lg">
+        <label className="col-span-4 flex items-center gap-2 text-lg">
           <input
             type="checkbox"
             checked={filtro.incluirBaja}
@@ -113,7 +131,10 @@ function ListaDisfraces(): React.JSX.Element {
                     {modelo.nombre}
                     {!modelo.activo && <span className="ml-2 text-base font-semibold text-slate-600">(dado de baja)</span>}
                   </p>
-                  <p className="text-slate-700">{modelo.categoria}</p>
+                  <p className="text-slate-700">
+                    {modelo.categoria}
+                    {modelo.region && ` · ${NOMBRE_REGION[modelo.region]}`}
+                  </p>
                 </div>
                 <p className="w-32 text-right text-xl font-semibold">{formatearSoles(modelo.precioAlquiler)}</p>
                 <p className={`w-56 text-right text-lg font-semibold ${disponibles === 0 ? 'text-red-700' : 'text-green-800'}`}>

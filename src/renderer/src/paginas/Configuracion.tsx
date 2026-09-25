@@ -42,6 +42,8 @@ export default function Configuracion(): React.JSX.Element {
           <dd>{estado.config.nombreTienda}</dd>
           <dt className="font-semibold">Mora por día de retraso</dt>
           <dd>{formatearSoles(estado.config.moraPorDia)}</dd>
+          <dt className="font-semibold">Cobro de la mora</dt>
+          <dd>{estado.config.modoMora === 'por_unidad' ? 'Por cada unidad atrasada' : 'Una vez por pedido'}</dd>
           <dt className="font-semibold">Días de margen para lavado</dt>
           <dd>{estado.config.diasMargenLavado}</dd>
           <dt className="font-semibold">Precio de alquiler</dt>

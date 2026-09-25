@@ -4,12 +4,14 @@ import type {
   DatosUnidad,
   EstadoFisico,
   FichaModelo,
+  Region,
   NuevasUnidades,
   NuevoModelo,
   PiezaDatos,
   ResumenModelo,
   Unidad
 } from '../../shared/disfraces'
+import { ordenarUnidades } from '../../shared/disfraces'
 import { formatearFecha } from '../../shared/formato'
 import { ErrorDeNegocio } from '../errores'
 import {
@@ -24,6 +26,8 @@ import {
   validarNombreModelo,
   validarPiezas,
   validarPrecio,
+  validarPrefijo,
+  validarRegion,
   validarTalla
 } from '../logica/disfraces'
 import { exigirDuena, type Sesion } from '../sesion'
@@ -35,6 +39,7 @@ interface FilaModelo {
   id: number
   nombre: string
   categoria: string
+  region: Region | null
   descripcion: string
   precio_alquiler: number
   foto: string | null
@@ -114,10 +119,11 @@ export function listarModelos(db: Db): ResumenModelo[] {
     id: m.id,
     nombre: m.nombre,
     categoria: m.categoria,
+    region: m.region,
     precioAlquiler: m.precio_alquiler,
     foto: m.foto,
     activo: m.activo === 1,
-    unidades: (porModelo.get(m.id) ?? []).map((u) => ({
+    unidades: ordenarUnidades(porModelo.get(m.id) ?? []).map((u) => ({
       codigo: u.codigo,
       talla: u.talla,
       estadoFisico: u.estado_fisico,
@@ -141,12 +147,13 @@ export function obtenerFicha(db: Db, id: number): FichaModelo {
     id: m.id,
     nombre: m.nombre,
     categoria: m.categoria,
+    region: m.region,
     descripcion: m.descripcion,
     precioAlquiler: m.precio_alquiler,
     foto: m.foto,
     activo: m.activo === 1,
     prefijo: m.prefijo,
-    unidades: unidades.map(
+    unidades: ordenarUnidades(unidades).map(
       (u): Unidad => ({
         id: u.id,
         codigo: u.codigo,
@@ -183,6 +190,24 @@ export function piezasSugeridas(db: Db, modeloId: number): PiezaDatos[] {
   ).map((p) => ({ nombre: p.nombre, costoReposicion: p.costo_reposicion }))
 }
 
+function prefijosUsados(db: Db, excluirId: number | null = null): string[] {
+  return (
+    db.prepare('SELECT prefijo FROM modelos WHERE id IS NOT ?').all(excluirId) as { prefijo: string }[]
+  ).map((f) => f.prefijo)
+}
+
+/** Prefijo sugerido para un disfraz nuevo a partir de su nombre (la usuaria puede cambiarlo). */
+export function sugerirPrefijo(db: Db, nombre: string): string {
+  return generarPrefijo(nombre, prefijosUsados(db))
+}
+
+function evitarPrefijoRepetido(db: Db, prefijo: string, excluirId: number | null): void {
+  const otro = db
+    .prepare('SELECT nombre FROM modelos WHERE prefijo = ? COLLATE NOCASE AND id IS NOT ?')
+    .get(prefijo, excluirId) as { nombre: string } | undefined
+  if (otro) throw new ErrorDeNegocio(`El prefijo ${prefijo} ya lo usa «${otro.nombre}». Elija otro.`)
+}
+
 export function sugerirCodigos(db: Db, modeloId: number, cantidad: number): string[] {
   const { prefijo } = filaModelo(db, modeloId)
   const n = Math.max(0, Math.min(50, Math.floor(cantidad)))
@@ -199,19 +224,21 @@ export function crearModelo(db: Db, datos: NuevoModelo, sesion: Sesion | null): 
   const categoria = validarCategoria(datos.categoria)
   const descripcion = validarDescripcion(datos.descripcion)
   const precio = validarPrecio(datos.precioAlquiler)
+  const region = validarRegion(datos.region)
+  const prefijoElegido = datos.prefijo?.trim() ? validarPrefijo(datos.prefijo) : null
 
   return db.transaction(() => {
     evitarNombreRepetido(db, nombre, null)
-    const usados = (db.prepare('SELECT prefijo FROM modelos').all() as { prefijo: string }[]).map((f) => f.prefijo)
-    const prefijo = generarPrefijo(nombre, usados)
+    if (prefijoElegido) evitarPrefijoRepetido(db, prefijoElegido, null)
+    const prefijo = prefijoElegido ?? generarPrefijo(nombre, prefijosUsados(db))
     const id = Number(
       db
         .prepare(
-          'INSERT INTO modelos (nombre, categoria, descripcion, precio_alquiler, prefijo) VALUES (?, ?, ?, ?, ?)'
+          'INSERT INTO modelos (nombre, categoria, region, descripcion, precio_alquiler, prefijo) VALUES (?, ?, ?, ?, ?, ?)'
         )
-        .run(nombre, categoria, descripcion, precio, prefijo).lastInsertRowid
+        .run(nombre, categoria, region, descripcion, precio, prefijo).lastInsertRowid
     )
-    registrarAuditoria(db, sesion, 'modelo_creado', 'modelo', id, { nombre, precio, prefijo })
+    registrarAuditoria(db, sesion, 'modelo_creado', 'modelo', id, { nombre, precio, prefijo, region })
     return id
   })()
 }
@@ -220,20 +247,47 @@ export function actualizarModelo(db: Db, id: number, datos: DatosModelo, sesion:
   const nombre = validarNombreModelo(datos.nombre)
   const categoria = validarCategoria(datos.categoria)
   const descripcion = validarDescripcion(datos.descripcion)
+  const region = validarRegion(datos.region)
 
   db.transaction(() => {
     const anterior = filaModelo(db, id)
     evitarNombreRepetido(db, nombre, id)
-    db.prepare('UPDATE modelos SET nombre = ?, categoria = ?, descripcion = ? WHERE id = ?').run(
+    db.prepare('UPDATE modelos SET nombre = ?, categoria = ?, region = ?, descripcion = ? WHERE id = ?').run(
       nombre,
       categoria,
+      region,
       descripcion,
       id
     )
     registrarAuditoria(db, sesion, 'modelo_editado', 'modelo', id, {
-      antes: { nombre: anterior.nombre, categoria: anterior.categoria, descripcion: anterior.descripcion },
-      despues: { nombre, categoria, descripcion }
+      antes: {
+        nombre: anterior.nombre,
+        categoria: anterior.categoria,
+        region: anterior.region,
+        descripcion: anterior.descripcion
+      },
+      despues: { nombre, categoria, region, descripcion }
     })
+  })()
+}
+
+/** El prefijo solo se puede cambiar mientras el disfraz no tenga unidades (después ya hay códigos con él). */
+export function cambiarPrefijo(db: Db, id: number, prefijo: string, sesion: Sesion | null): void {
+  const nuevo = validarPrefijo(prefijo)
+  db.transaction(() => {
+    const m = filaModelo(db, id)
+    if (m.prefijo === nuevo) return
+    const { total } = db.prepare('SELECT COUNT(*) AS total FROM unidades WHERE modelo_id = ?').get(id) as {
+      total: number
+    }
+    if (total > 0) {
+      throw new ErrorDeNegocio(
+        `No se puede cambiar el prefijo: "${m.nombre}" ya tiene unidades con códigos ${m.prefijo}-###.`
+      )
+    }
+    evitarPrefijoRepetido(db, nuevo, id)
+    db.prepare('UPDATE modelos SET prefijo = ? WHERE id = ?').run(nuevo, id)
+    registrarAuditoria(db, sesion, 'prefijo_cambiado', 'modelo', id, { anterior: m.prefijo, nuevo })
   })()
 }
 

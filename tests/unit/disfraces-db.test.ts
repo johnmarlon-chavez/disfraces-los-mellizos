@@ -15,7 +15,11 @@ beforeEach(() => {
 })
 
 function crear(nombre = 'Spiderman', precio = 3500): number {
-  return disfraces.crearModelo(db, { nombre, categoria: 'Superhéroes', descripcion: '', precioAlquiler: precio }, null)
+  return disfraces.crearModelo(
+    db,
+    { nombre, categoria: 'Superhéroes', region: null, descripcion: '', precioAlquiler: precio },
+    null
+  )
 }
 
 function agregar(modeloId: number, talla: string, cantidad: number, piezas = [{ nombre: 'Máscara', costoReposicion: 2000 }]) {
@@ -122,7 +126,103 @@ describe('modelos', () => {
   })
 })
 
+describe('prefijo elegido a mano', () => {
+  function crearConPrefijo(nombre: string, prefijo: string): number {
+    return disfraces.crearModelo(
+      db,
+      { nombre, categoria: 'Danzas', region: 'costa', descripcion: '', precioAlquiler: 4000, prefijo },
+      null
+    )
+  }
+
+  it('se guarda en mayúsculas y se usa en los códigos', () => {
+    const id = crearConPrefijo('Marinera varón', ' mav ')
+    expect(disfraces.obtenerFicha(db, id).prefijo).toBe('MAV')
+    expect(agregar(id, '10', 2)).toEqual(['MAV-001', 'MAV-002'])
+  })
+
+  it('no puede repetir el prefijo de otro disfraz, sin importar mayúsculas', () => {
+    crearConPrefijo('Marinera mujer', 'MAR')
+    expect(() => crearConPrefijo('Marinera varón', 'mar')).toThrow('El prefijo MAR ya lo usa «Marinera mujer». Elija otro.')
+  })
+
+  it('valida el formato', () => {
+    expect(() => crearConPrefijo('Marinera varón', 'MA-V')).toThrow(/no es válido/)
+    expect(() => crearConPrefijo('Marinera varón', 'M')).toThrow(/no es válido/)
+    expect(() => crearConPrefijo('Marinera varón', 'MARINE')).toThrow(/no es válido/)
+  })
+
+  it('la sugerencia evita los prefijos usados', () => {
+    crearConPrefijo('Marinera mujer', 'MAR')
+    expect(disfraces.sugerirPrefijo(db, 'Marinera varón')).toBe('MAV')
+  })
+
+  it('se puede cambiar mientras el disfraz no tiene unidades', () => {
+    const id = crearConPrefijo('Marinera varón', 'MAR')
+    disfraces.cambiarPrefijo(db, id, 'mav', null)
+    expect(disfraces.obtenerFicha(db, id).prefijo).toBe('MAV')
+    expect(auditoria('prefijo_cambiado')).toEqual([{ anterior: 'MAR', nuevo: 'MAV' }])
+  })
+
+  it('queda bloqueado en cuanto el disfraz tiene una unidad, aunque esté de baja', () => {
+    const id = crearConPrefijo('Marinera varón', 'MAV')
+    agregar(id, '10', 1)
+    disfraces.cambiarEstadoUnidad(db, unidadId('MAV-001'), 'baja', null)
+    expect(() => disfraces.cambiarPrefijo(db, id, 'MRV', null)).toThrow(
+      'No se puede cambiar el prefijo: "Marinera varón" ya tiene unidades con códigos MAV-###.'
+    )
+  })
+
+  it('al cambiarlo tampoco puede repetir el de otro disfraz', () => {
+    crearConPrefijo('Marinera mujer', 'MAR')
+    const id = crearConPrefijo('Marinera varón', 'MAV')
+    expect(() => disfraces.cambiarPrefijo(db, id, 'MAR', null)).toThrow(/ya lo usa «Marinera mujer»/)
+  })
+})
+
+describe('región', () => {
+  it('se guarda al crear y se puede cambiar o quitar al editar', () => {
+    const id = disfraces.crearModelo(
+      db,
+      { nombre: 'Huaylas mujer', categoria: 'Danzas', region: 'sierra', descripcion: '', precioAlquiler: 4500 },
+      null
+    )
+    expect(disfraces.obtenerFicha(db, id).region).toBe('sierra')
+    disfraces.actualizarModelo(db, id, { nombre: 'Huaylas mujer', categoria: 'Danzas', region: null, descripcion: '' }, null)
+    expect(disfraces.obtenerFicha(db, id).region).toBeNull()
+    expect(disfraces.listarModelos(db)[0].region).toBeNull()
+  })
+
+  it('rechaza regiones inventadas', () => {
+    expect(() =>
+      disfraces.crearModelo(
+        db,
+        { nombre: 'X', categoria: 'Y', region: 'puna' as never, descripcion: '', precioAlquiler: 100 },
+        null
+      )
+    ).toThrow(/región válida/)
+  })
+})
+
 describe('unidades y piezas', () => {
+  it('normaliza la talla escrita a mano', () => {
+    const id = crear()
+    agregar(id, '  xxl ', 1)
+    expect(disfraces.obtenerFicha(db, id).unidades[0].talla).toBe('XXL')
+  })
+
+  it('la ficha y la lista ordenan las unidades por talla lógica y luego por código', () => {
+    const id = crear()
+    agregar(id, 'M', 1) // SPI-001
+    agregar(id, '10', 1) // SPI-002
+    agregar(id, '8', 1) // SPI-003
+    agregar(id, 'S', 1) // SPI-004
+    agregar(id, '8', 1) // SPI-005
+    const orden = ['SPI-003', 'SPI-005', 'SPI-002', 'SPI-004', 'SPI-001']
+    expect(disfraces.obtenerFicha(db, id).unidades.map((u) => u.codigo)).toEqual(orden)
+    expect(disfraces.listarModelos(db)[0].unidades.map((u) => u.codigo)).toEqual(orden)
+  })
+
   it('crea las unidades con las piezas indicadas', () => {
     const id = crear()
     agregar(id, '8', 2, [
@@ -281,7 +381,11 @@ describe('listado', () => {
   it('lista las categorías existentes sin repetir', () => {
     crear('Spiderman')
     crear('Batman')
-    disfraces.crearModelo(db, { nombre: 'Bruja', categoria: 'Halloween', descripcion: '', precioAlquiler: 100 }, null)
+    disfraces.crearModelo(
+      db,
+      { nombre: 'Bruja', categoria: 'Halloween', region: null, descripcion: '', precioAlquiler: 100 },
+      null
+    )
     expect(disfraces.listarCategorias(db)).toEqual(['Halloween', 'Superhéroes'])
   })
 })

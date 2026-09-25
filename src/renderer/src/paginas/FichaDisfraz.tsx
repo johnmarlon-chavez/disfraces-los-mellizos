@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { urlFoto, type EstadoFisico, type FichaModelo, type Unidad } from '../../../shared/disfraces'
+import { urlFoto, type DatosModelo, type EstadoFisico, type FichaModelo, type Unidad } from '../../../shared/disfraces'
 import { formatearSoles, leerMonto } from '../../../shared/formato'
 import { llamar, mensajeDe } from '../api'
 import { VOLVER_CON_FILTROS } from './busquedaDisfraces'
 import DialogoAgregarUnidades from '../componentes/disfraces/DialogoAgregarUnidades'
 import DialogoUnidad from '../componentes/disfraces/DialogoUnidad'
 import EtiquetaEstado from '../componentes/disfraces/EtiquetaEstado'
+import SelectorRegion from '../componentes/disfraces/SelectorRegion'
 import { useAvisos } from '../componentes/ui/Avisos'
 import Boton from '../componentes/ui/Boton'
 import { CampoTexto } from '../componentes/ui/Campos'
@@ -25,7 +26,8 @@ export default function FichaDisfraz(): React.JSX.Element {
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [precio, setPrecio] = useState('')
   const [errorPrecio, setErrorPrecio] = useState<string | null>(null)
-  const [datos, setDatos] = useState({ nombre: '', categoria: '', descripcion: '' })
+  const [datos, setDatos] = useState<DatosModelo>({ nombre: '', categoria: '', region: null, descripcion: '' })
+  const [prefijo, setPrefijo] = useState('')
   const [categorias, setCategorias] = useState<string[]>([])
   const [agregando, setAgregando] = useState(false)
   const [unidadAbierta, setUnidadAbierta] = useState<Unidad | null>(null)
@@ -48,7 +50,8 @@ export default function FichaDisfraz(): React.JSX.Element {
         if (!vigente) return
         setFicha(f)
         setPrecio(soloNumero(f.precioAlquiler))
-        setDatos({ nombre: f.nombre, categoria: f.categoria, descripcion: f.descripcion })
+        setDatos({ nombre: f.nombre, categoria: f.categoria, region: f.region, descripcion: f.descripcion })
+        setPrefijo(f.prefijo)
       })
       .catch((e) => vigente && setErrorCarga(mensajeDe(e)))
     llamar(window.api.modelos.categorias())
@@ -102,6 +105,17 @@ export default function FichaDisfraz(): React.JSX.Element {
   const guardarDatos = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     await ejecutar(() => llamar(window.api.modelos.actualizar(ficha.id, datos)), 'Datos guardados.')
+  }
+
+  const guardarPrefijo = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    const nuevo = prefijo.trim().toUpperCase()
+    if (nuevo === ficha.prefijo) return avisos.exito('El prefijo no cambió.')
+    const ok = await ejecutar(
+      () => llamar(window.api.modelos.cambiarPrefijo(ficha.id, nuevo)),
+      `Prefijo cambiado. Los códigos serán ${nuevo}-001, ${nuevo}-002…`
+    )
+    if (ok) setPrefijo(nuevo)
   }
 
   const cambiarEstado = async (unidad: Unidad, estado: EstadoFisico, exito: string): Promise<void> => {
@@ -230,13 +244,16 @@ export default function FichaDisfraz(): React.JSX.Element {
           </form>
 
           <form onSubmit={guardarDatos} className="grid grid-cols-2 gap-4 rounded-lg bg-white p-4 shadow">
-            <CampoTexto etiqueta="Nombre" valor={datos.nombre} onCambio={(v) => setDatos({ ...datos, nombre: v })} />
+            <div className="col-span-2">
+              <CampoTexto etiqueta="Nombre" valor={datos.nombre} onCambio={(v) => setDatos({ ...datos, nombre: v })} />
+            </div>
             <CampoTexto
               etiqueta="Categoría"
               valor={datos.categoria}
               onCambio={(v) => setDatos({ ...datos, categoria: v })}
               sugerencias={categorias}
             />
+            <SelectorRegion valor={datos.region} onCambio={(region) => setDatos({ ...datos, region })} />
             <div className="col-span-2">
               <CampoTexto
                 etiqueta="Descripción"
@@ -256,14 +273,37 @@ export default function FichaDisfraz(): React.JSX.Element {
 
       <div className="rounded-lg bg-white p-4 shadow">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Unidades ({activas.length})</h2>
+          <h2 className="text-2xl font-bold">
+            Unidades ({activas.length})
+            {ficha.unidades.length > 0 && (
+              <span className="ml-3 text-lg font-normal text-slate-600">
+                Códigos <span className="font-mono">{ficha.prefijo}-###</span>
+              </span>
+            )}
+          </h2>
           <Boton onClick={() => setAgregando(true)} disabled={!ficha.activo}>
             + Agregar unidades
           </Boton>
         </div>
 
         {ficha.unidades.length === 0 ? (
-          <p className="text-lg text-slate-700">Este disfraz todavía no tiene unidades. Agregue las que tenga por talla.</p>
+          <div className="flex flex-col gap-4">
+            <p className="text-lg text-slate-700">Este disfraz todavía no tiene unidades. Agregue las que tenga por talla.</p>
+            <form onSubmit={guardarPrefijo} className="flex items-end gap-3">
+              <div className="w-48">
+                <CampoTexto
+                  etiqueta="Prefijo de códigos"
+                  valor={prefijo}
+                  onCambio={(v) => setPrefijo(v.toUpperCase())}
+                  entrada={{ maxLength: 5, className: 'w-full rounded-lg border-2 border-slate-400 bg-white px-3 py-2 font-mono text-lg uppercase' }}
+                />
+              </div>
+              <Boton type="submit" variante="secundario">
+                Guardar prefijo
+              </Boton>
+              <p className="pb-3 text-base text-slate-600">Se puede cambiar solo hasta agregar la primera unidad.</p>
+            </form>
+          </div>
         ) : (
           <table className="w-full text-left text-lg">
             <thead>

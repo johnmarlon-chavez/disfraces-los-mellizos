@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ordenarTallas, type FichaModelo } from '../../../../shared/disfraces'
+import type { FichaModelo } from '../../../../shared/disfraces'
 import { llamar, mensajeDe } from '../../api'
 import Boton from '../ui/Boton'
 import { CampoTexto } from '../ui/Campos'
 import Dialogo from '../ui/Dialogo'
 import EditorPiezas, { filasAPiezas, piezasAFilas, type FilaPieza } from './EditorPiezas'
-
-const TALLAS_COMUNES = ['2', '4', '6', '8', '10', '12', '14', '16', 'S', 'M', 'L', 'XL']
+import SelectorTalla from './SelectorTalla'
 
 interface Props {
   modelo: FichaModelo
@@ -45,7 +44,7 @@ export default function DialogoAgregarUnidades({ modelo, onCerrar, onGuardado }:
 
   const guardar = async (): Promise<void> => {
     setError(null)
-    if (!talla.trim()) return setError('Escriba la talla.')
+    if (!talla.trim()) return setError('Elija la talla.')
     if (!cantidadValida) return setError('La cantidad debe ser un número del 1 al 50.')
     if (codigos.length < n) return setError('Espere un momento, se están preparando los códigos.')
     const convertidas = filasAPiezas(piezas)
@@ -69,8 +68,6 @@ export default function DialogoAgregarUnidades({ modelo, onCerrar, onGuardado }:
     }
   }
 
-  const tallas = ordenarTallas([...modelo.unidades.map((u) => u.talla), ...TALLAS_COMUNES])
-
   return (
     <Dialogo
       titulo={`Agregar unidades de ${modelo.nombre}`}
@@ -89,13 +86,7 @@ export default function DialogoAgregarUnidades({ modelo, onCerrar, onGuardado }:
     >
       <div className="flex flex-col gap-5">
         <div className="grid grid-cols-2 gap-4">
-          <CampoTexto
-            etiqueta="Talla"
-            valor={talla}
-            onCambio={setTalla}
-            sugerencias={tallas}
-            entrada={{ autoFocus: true, placeholder: 'Ej. 8 o M' }}
-          />
+          <SelectorTalla valor={talla} onCambio={setTalla} autoFocus />
           <CampoTexto
             etiqueta="¿Cuántas unidades?"
             valor={cantidad}

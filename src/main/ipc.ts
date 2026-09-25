@@ -30,6 +30,8 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('modelos:obtener', (id) => disfraces.obtenerFicha(db, id))
   manejar('modelos:categorias', () => disfraces.listarCategorias(db))
   manejar('modelos:crear', (datos) => disfraces.crearModelo(db, datos, obtenerSesion()))
+  manejar('modelos:sugerirPrefijo', (nombre) => disfraces.sugerirPrefijo(db, nombre))
+  manejar('modelos:cambiarPrefijo', (id, prefijo) => disfraces.cambiarPrefijo(db, id, prefijo, obtenerSesion()))
   manejar('modelos:actualizar', (id, datos) => disfraces.actualizarModelo(db, id, datos, obtenerSesion()))
   manejar('modelos:cambiarPrecio', (id, precio) => disfraces.cambiarPrecio(db, id, precio, obtenerSesion()))
   manejar('modelos:darDeBaja', (id) => disfraces.darDeBajaModelo(db, id, obtenerSesion()))

@@ -15,7 +15,8 @@
     "test:watch": "node scripts/con-electron.mjs --como-node node_modules/vitest/vitest.mjs",
     "test:e2e": "electron-vite build && playwright test",
     "seed": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "seed:reiniciar": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js --reiniciar"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

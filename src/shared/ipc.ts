@@ -19,9 +19,13 @@ export interface InfoApp {
   esDesarrollo: boolean
 }
 
+/** por_unidad: la mora se cobra por cada unidad atrasada; por_pedido: una sola vez por pedido. */
+export type ModoMora = 'por_unidad' | 'por_pedido'
+
 /** Montos en céntimos. */
 export interface Configuracion {
   moraPorDia: number
+  modoMora: ModoMora
   diasMargenLavado: number
   precioPorDia: boolean
   carpetaRespaldo: string
@@ -38,6 +42,8 @@ export interface CanalesIpc {
   'modelos:obtener': { args: [id: number]; resultado: FichaModelo }
   'modelos:categorias': { args: []; resultado: string[] }
   'modelos:crear': { args: [datos: NuevoModelo]; resultado: number }
+  'modelos:sugerirPrefijo': { args: [nombre: string]; resultado: string }
+  'modelos:cambiarPrefijo': { args: [id: number, prefijo: string]; resultado: void }
   'modelos:actualizar': { args: [id: number, datos: DatosModelo]; resultado: void }
   'modelos:cambiarPrecio': { args: [id: number, precio: number]; resultado: void }
   'modelos:darDeBaja': { args: [id: number]; resultado: void }
@@ -67,6 +73,8 @@ export interface ApiDisfraces {
     obtener: Metodo<'modelos:obtener'>
     categorias: Metodo<'modelos:categorias'>
     crear: Metodo<'modelos:crear'>
+    sugerirPrefijo: Metodo<'modelos:sugerirPrefijo'>
+    cambiarPrefijo: Metodo<'modelos:cambiarPrefijo'>
     actualizar: Metodo<'modelos:actualizar'>
     cambiarPrecio: Metodo<'modelos:cambiarPrecio'>
     darDeBaja: Metodo<'modelos:darDeBaja'>

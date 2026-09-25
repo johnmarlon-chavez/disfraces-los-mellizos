@@ -106,6 +106,21 @@ describe('aplicarMigraciones', () => {
     ])
   })
 
+  it('la migración 003 agrega región (vacía) y modo de mora "por unidad" sin tocar los datos', () => {
+    const db = new Database(':memory:')
+    aplicarMigraciones(db, MIGRACIONES.slice(0, 2))
+    db.exec("INSERT INTO modelos (nombre, categoria, precio_alquiler, prefijo) VALUES ('Pirata', 'Personajes', 3000, 'PIR')")
+    aplicarMigraciones(db)
+    expect(db.prepare('SELECT nombre, precio_alquiler, region FROM modelos').get()).toEqual({
+      nombre: 'Pirata',
+      precio_alquiler: 3000,
+      region: null
+    })
+    expect(db.prepare('SELECT modo_mora FROM configuracion').get()).toEqual({ modo_mora: 'por_unidad' })
+    expect(() => db.prepare("UPDATE modelos SET region = 'puna'").run()).toThrow(/CHECK/)
+    expect(() => db.prepare("UPDATE configuracion SET modo_mora = 'por_dia'").run()).toThrow(/CHECK/)
+  })
+
   it('avisa con un mensaje claro si la base es de una versión más nueva del programa', () => {
     const db = new Database(':memory:')
     db.pragma(`user_version = ${MIGRACIONES.length + 1}`)

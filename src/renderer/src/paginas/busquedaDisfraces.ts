@@ -3,7 +3,7 @@ import type { FiltroModelos } from '../../../shared/disfraces'
 // Últimos filtros de la lista de disfraces, para restaurarlos al volver desde una ficha.
 // Entrar desde el menú lateral muestra la lista sin filtros.
 
-export const FILTRO_VACIO: FiltroModelos = { texto: '', talla: '', categoria: '', incluirBaja: false }
+export const FILTRO_VACIO: FiltroModelos = { texto: '', talla: '', region: '', categoria: '', incluirBaja: false }
 
 /** Estado de navegación que pide a la lista restaurar los últimos filtros. */
 export const VOLVER_CON_FILTROS = { conservarFiltros: true }

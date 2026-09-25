@@ -142,6 +142,7 @@ describe('esquema inicial', () => {
   it('trae una configuración inicial editable con valores de ejemplo', () => {
     expect(obtenerConfiguracion(db)).toEqual({
       moraPorDia: 500,
+      modoMora: 'por_unidad',
       diasMargenLavado: 1,
       precioPorDia: false,
       carpetaRespaldo: '',

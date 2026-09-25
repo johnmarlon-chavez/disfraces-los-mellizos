@@ -33,10 +33,17 @@ async function crearDisfraz(nombre: string, categoria: string, precio: string): 
   await expect(v.getByRole('heading', { level: 1, name: nombre })).toBeVisible()
 }
 
+const TALLAS_FIJAS = ['4', '6', '8', '10', '12', '14', '16', 'S', 'M', 'L', 'XL']
+
 async function agregarUnidades(talla: string, cantidad: number, piezas: [string, string][] = []): Promise<void> {
   await v.getByRole('button', { name: '+ Agregar unidades' }).click()
   const dialogo = v.getByRole('dialog')
-  await dialogo.getByLabel('Talla').fill(talla)
+  if (TALLAS_FIJAS.includes(talla)) {
+    await dialogo.getByLabel('Talla', { exact: true }).selectOption(talla)
+  } else {
+    await dialogo.getByLabel('Talla', { exact: true }).selectOption({ label: 'Otra…' })
+    await dialogo.getByLabel('Escriba la otra talla').fill(talla)
+  }
   await dialogo.getByLabel('¿Cuántas unidades?').fill(String(cantidad))
   for (const [nombre, costo] of piezas) {
     await dialogo.getByRole('button', { name: '+ Agregar pieza' }).click()
@@ -164,11 +171,11 @@ test('buscar por código y filtrar por talla', async () => {
   await expect(lista).toContainText('Spiderman Negro')
 
   await v.getByLabel('Buscar').fill('')
-  await v.getByLabel('Talla').selectOption('8')
+  await v.getByLabel('Talla', { exact: true }).selectOption('8')
   await expect(lista.getByRole('link')).toHaveCount(1)
   await expect(lista).toContainText('Talla 8: 3 de 3 disponibles')
 
-  await v.getByLabel('Talla').selectOption('M')
+  await v.getByLabel('Talla', { exact: true }).selectOption('M')
   await expect(lista).toContainText('Spiderman Negro')
   await expect(lista.getByRole('link')).toHaveCount(1)
 })
@@ -176,14 +183,14 @@ test('buscar por código y filtrar por talla', async () => {
 test('los filtros se conservan al volver desde una ficha', async () => {
   await v.getByRole('list', { name: 'Lista de disfraces' }).getByRole('link').first().click()
   await v.getByRole('link', { name: '← Volver a Disfraces' }).click()
-  await expect(v.getByLabel('Talla')).toHaveValue('M')
+  await expect(v.getByLabel('Talla', { exact: true })).toHaveValue('M')
   // Desde el menú lateral la lista se muestra sin filtros
   await irADisfraces()
-  await expect(v.getByLabel('Talla')).toHaveValue('')
+  await expect(v.getByLabel('Talla', { exact: true })).toHaveValue('')
 })
 
 test('dar de baja un disfraz lo oculta de la lista', async () => {
-  await v.getByLabel('Talla').selectOption('')
+  await v.getByLabel('Talla', { exact: true }).selectOption('')
   await v.getByRole('link', { name: /^Spiderman Negro/ }).click()
   await v.getByRole('button', { name: 'Dar de baja el disfraz' }).click()
   await v.getByRole('dialog', { name: '¿Dar de baja "Spiderman Negro"?' }).getByRole('button', { name: 'Sí, dar de baja' }).click()
@@ -195,4 +202,52 @@ test('dar de baja un disfraz lo oculta de la lista', async () => {
   await v.getByLabel('Mostrar disfraces dados de baja').check()
   await expect(v.getByLabel('Mostrar disfraces dados de baja')).toBeChecked()
   await expect(lista).toContainText('Spiderman Negro')
+})
+
+test('danza con región y prefijo elegido a mano', async () => {
+  await irADisfraces()
+  await v.getByRole('link', { name: '+ Nuevo disfraz' }).click()
+  await v.getByLabel('Nombre').fill('Marinera varón')
+  await expect(v.getByLabel('Prefijo de códigos')).toHaveValue('MAR')
+  await v.getByLabel('Categoría').fill('Danzas típicas')
+  await v.getByLabel('Región').selectOption({ label: 'Costa' })
+  await v.getByLabel('Precio de alquiler').fill('40')
+  await v.getByLabel('Prefijo de códigos').fill('mav')
+  await expect(v.getByText('Los códigos serán MAV-001, MAV-002…')).toBeVisible()
+  // Seguir escribiendo el nombre ya no pisa el prefijo elegido a mano
+  await v.getByLabel('Nombre').fill('Marinera norteña varón')
+  await expect(v.getByLabel('Prefijo de códigos')).toHaveValue('MAV')
+  await v.getByRole('button', { name: 'Guardar disfraz' }).click()
+  await expect(v.getByRole('heading', { level: 1, name: 'Marinera norteña varón' })).toBeVisible()
+  await expect(v.getByLabel('Región')).toHaveValue('costa')
+})
+
+test('el prefijo se puede cambiar hasta agregar la primera unidad', async () => {
+  await v.getByLabel('Prefijo de códigos').fill('MNV')
+  await v.getByRole('button', { name: 'Guardar prefijo' }).click()
+  await expect(v.getByRole('status').filter({ hasText: 'Los códigos serán MNV-001' })).toBeVisible()
+
+  await agregarUnidades('12', 1)
+  await expect(fila('MNV-001')).toBeVisible()
+  await expect(v.getByLabel('Prefijo de códigos')).toHaveCount(0)
+  await expect(v.getByText('MNV-###')).toBeVisible()
+})
+
+test('talla "Otra" se normaliza y las unidades se ordenan por talla', async () => {
+  await agregarUnidades('  xxl ', 1)
+  await expect(fila('MNV-002')).toContainText('XXL')
+  await agregarUnidades('8', 1)
+  const codigos = await v.locator('tbody tr td:first-child').allTextContents()
+  expect(codigos).toEqual(['MNV-003', 'MNV-001', 'MNV-002']) // 8, 12, XXL
+})
+
+test('filtrar la lista por región', async () => {
+  await irADisfraces()
+  const lista = v.getByRole('list', { name: 'Lista de disfraces' })
+  await v.getByLabel('Región').selectOption({ label: 'Costa' })
+  await expect(lista.getByRole('link')).toHaveCount(1)
+  await expect(lista).toContainText('Danzas típicas · Costa')
+  await v.getByLabel('Región').selectOption({ label: 'Sin región' })
+  await expect(lista).toContainText('Spiderman')
+  await expect(lista).not.toContainText('Marinera')
 })

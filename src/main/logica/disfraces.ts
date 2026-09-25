@@ -1,5 +1,13 @@
 // Reglas de negocio de disfraces. Funciones puras, sin base de datos.
-import { NOMBRE_ESTADO, normalizarTexto, type EstadoFisico, type PiezaDatos } from '../../shared/disfraces'
+import {
+  NOMBRE_ESTADO,
+  REGIONES,
+  normalizarTalla,
+  normalizarTexto,
+  type EstadoFisico,
+  type PiezaDatos,
+  type Region
+} from '../../shared/disfraces'
 import { ErrorDeNegocio } from '../errores'
 
 function palabrasDelNombre(nombre: string): string[] {
@@ -82,10 +90,28 @@ export function validarPrecio(centimos: number): number {
 }
 
 export function validarTalla(talla: string): string {
-  const limpio = talla.trim().toUpperCase()
+  const limpio = normalizarTalla(talla)
   if (!limpio) throw new ErrorDeNegocio('Escriba la talla.')
   if (limpio.length > 10) throw new ErrorDeNegocio('La talla es demasiado larga (máximo 10 letras).')
   return limpio
+}
+
+/** Prefijo elegido a mano: 2 a 5 letras o números, en mayúsculas. La unicidad se revisa en la base. */
+export function validarPrefijo(prefijo: string): string {
+  const limpio = prefijo.trim().toUpperCase()
+  if (!limpio) throw new ErrorDeNegocio('Escriba el prefijo de los códigos.')
+  if (!/^[A-Z0-9]{2,5}$/.test(limpio)) {
+    throw new ErrorDeNegocio(
+      `El prefijo "${prefijo.trim()}" no es válido. Use de 2 a 5 letras o números, sin espacios ni guiones, por ejemplo MAV.`
+    )
+  }
+  return limpio
+}
+
+export function validarRegion(region: Region | null): Region | null {
+  if (region === null) return null
+  if (!REGIONES.includes(region)) throw new ErrorDeNegocio('Elija una región válida: Costa, Sierra, Selva o "No aplica".')
+  return region
 }
 
 export function validarCodigo(codigo: string): string {
