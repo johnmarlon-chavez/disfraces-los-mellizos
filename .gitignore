@@ -1,0 +1,29 @@
+# Dependencias
+node_modules/
+
+# Builds e instaladores (nunca subir al repositorio)
+out/
+dist/
+release/
+
+# Datos de clientes (nunca subir al repositorio)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+fotos/
+
+# Compilación de TypeScript
+*.tsbuildinfo
+
+# Pruebas
+test-results/
+playwright-report/
+
+# Herramientas locales
+.kilo/
+
+# Sistema y editores
+Thumbs.db
+.DS_Store
+*.log

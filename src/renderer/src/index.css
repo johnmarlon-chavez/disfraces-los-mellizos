@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+/* Letra base grande: todo el diseño usa rem, así que escala con esto. */
+html {
+  font-size: 18px;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Foco muy visible para quien use teclado. */
+:focus-visible {
+  @apply outline-3 outline-offset-2 outline-blue-700;
+}
