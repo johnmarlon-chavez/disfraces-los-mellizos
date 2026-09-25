@@ -16,20 +16,41 @@ export function formatearSoles(centimos: number): string {
   return `${signo}S/ ${soles}.${cent}`
 }
 
+export type LecturaMonto = { ok: true; centimos: number } | { ok: false; error: string }
+
 /**
- * Convierte lo que escribe la usuaria ("25", "25.5", "S/ 1,250.00") a céntimos.
- * Devuelve null si el texto no es un monto válido (negativo, más de 2 decimales, letras...).
+ * Convierte lo que escribe la usuaria a céntimos. El punto y la coma valen como
+ * separador decimal: "25", "25.5", "25,5", "25,50" y "S/ 25.50" son válidos.
+ * No se aceptan separadores de miles: "1.250,00" o "25,555" son ambiguos y se
+ * rechazan con un mensaje claro, en vez de adivinar el monto.
  */
-export function solesACentimos(texto: string): number | null {
+export function leerMonto(texto: string): LecturaMonto {
   const limpio = texto.trim().replace(/^S\/\s*/i, '')
-  // La coma solo se acepta como separador de miles bien formado ("1,250"), para que
-  // "25,5" (coma decimal) sea rechazado en vez de leerse como S/ 255.
-  const coincidencia = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/.exec(limpio)
-  if (!coincidencia) return null
-  const soles = Number(coincidencia[1].replace(/,/g, ''))
-  const cent = Number((coincidencia[2] ?? '0').padEnd(2, '0'))
-  const total = soles * 100 + cent
-  return Number.isSafeInteger(total) ? total : null
+  if (limpio === '') return { ok: false, error: 'Escriba un monto.' }
+  if (limpio.startsWith('-')) return { ok: false, error: 'El monto no puede ser negativo.' }
+
+  const coincidencia = /^(\d+)(?:[.,](\d+))?$/.exec(limpio)
+  if (!coincidencia) {
+    if (/^[\d.,]+$/.test(limpio)) {
+      return {
+        ok: false,
+        error: `No se entiende el monto "${texto.trim()}". Escríbalo sin separador de miles, por ejemplo 1250.50`
+      }
+    }
+    return { ok: false, error: 'Escriba el monto solo con números, por ejemplo 25.50' }
+  }
+
+  const [, enteros, decimales = ''] = coincidencia
+  if (decimales.length > 2) {
+    return {
+      ok: false,
+      error: `No se entiende el monto "${texto.trim()}". Use como máximo 2 decimales y no use separador de miles, por ejemplo 1250.50`
+    }
+  }
+
+  const total = Number(enteros) * 100 + Number(decimales.padEnd(2, '0'))
+  if (!Number.isSafeInteger(total)) return { ok: false, error: 'El monto es demasiado grande.' }
+  return { ok: true, centimos: total }
 }
 
 function partesEnLima(fecha: Date): { dia: string; mes: string; anio: string } {

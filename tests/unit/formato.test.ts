@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatearFecha, formatearSoles, hoyEnLima, solesACentimos } from '../../src/shared/formato'
+import { formatearFecha, formatearSoles, hoyEnLima, leerMonto } from '../../src/shared/formato'
 
 describe('formatearSoles', () => {
   it.each([
@@ -19,25 +19,54 @@ describe('formatearSoles', () => {
   })
 })
 
-describe('solesACentimos', () => {
+describe('leerMonto', () => {
   it.each([
     ['25', 2500],
     ['25.5', 2550],
     ['25.50', 2550],
-    ['0.05', 5],
-    [' S/ 1,250.00 ', 125000],
-    ['s/25', 2500]
-  ])('"%s" -> %i', (texto, esperado) => {
-    expect(solesACentimos(texto)).toBe(esperado)
+    ['25,5', 2550],
+    ['25,50', 2550],
+    ['0,05', 5],
+    ['1250.00', 125000],
+    ['1250,5', 125050],
+    [' S/ 25,50 ', 2550],
+    ['s/25', 2500],
+    ['S/25.5', 2550]
+  ])('"%s" -> %i céntimos', (texto, esperado) => {
+    expect(leerMonto(texto)).toEqual({ ok: true, centimos: esperado })
   })
 
-  it.each(['', 'abc', '-5', '25.505', '25,5', '25,50', '1,25', '1.2.3'])('"%s" no es válido', (texto) => {
-    expect(solesACentimos(texto)).toBeNull()
+  it.each([
+    ['1.250,00', /separador de miles/],
+    ['1,250.00', /separador de miles/],
+    ['25,555', /2 decimales/],
+    ['25.505', /2 decimales/],
+    ['1.2.3', /separador de miles/],
+    ['1,2,3', /separador de miles/],
+    ['', /Escriba un monto/],
+    ['   ', /Escriba un monto/],
+    ['S/', /Escriba un monto/],
+    ['-5', /no puede ser negativo/],
+    ['abc', /solo con números/],
+    ['25 soles', /solo con números/],
+    ['25.', /separador de miles/],
+    [',50', /separador de miles/]
+  ])('"%s" se rechaza con un mensaje claro', (texto, mensaje) => {
+    const resultado = leerMonto(texto)
+    expect(resultado.ok).toBe(false)
+    if (!resultado.ok) expect(resultado.error).toMatch(mensaje)
+  })
+
+  it('el mensaje de error repite lo que escribió la usuaria', () => {
+    expect(leerMonto('1.250,00')).toEqual({
+      ok: false,
+      error: 'No se entiende el monto "1.250,00". Escríbalo sin separador de miles, por ejemplo 1250.50'
+    })
   })
 
   it('no pierde céntimos por redondeo de punto flotante', () => {
-    expect(solesACentimos('0.29')).toBe(29)
-    expect(solesACentimos('1.15')).toBe(115)
+    expect(leerMonto('0.29')).toEqual({ ok: true, centimos: 29 })
+    expect(leerMonto('1,15')).toEqual({ ok: true, centimos: 115 })
   })
 })
 
