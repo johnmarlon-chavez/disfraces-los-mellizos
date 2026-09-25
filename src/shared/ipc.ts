@@ -1,6 +1,16 @@
 // Contrato tipado entre el renderer y el proceso main.
 // Cada canal declara sus argumentos y su resultado; el preload y los handlers
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
+import type {
+  DatosModelo,
+  DatosUnidad,
+  EstadoFisico,
+  FichaModelo,
+  NuevasUnidades,
+  NuevoModelo,
+  PiezaDatos,
+  ResumenModelo
+} from './disfraces'
 
 export interface InfoApp {
   nombreTienda: string
@@ -23,18 +33,52 @@ export type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string }
 export interface CanalesIpc {
   'app:info': { args: []; resultado: InfoApp }
   'config:obtener': { args: []; resultado: Configuracion }
+
+  'modelos:listar': { args: []; resultado: ResumenModelo[] }
+  'modelos:obtener': { args: [id: number]; resultado: FichaModelo }
+  'modelos:categorias': { args: []; resultado: string[] }
+  'modelos:crear': { args: [datos: NuevoModelo]; resultado: number }
+  'modelos:actualizar': { args: [id: number, datos: DatosModelo]; resultado: void }
+  'modelos:cambiarPrecio': { args: [id: number, precio: number]; resultado: void }
+  'modelos:darDeBaja': { args: [id: number]; resultado: void }
+  'modelos:reactivar': { args: [id: number]; resultado: void }
+  'modelos:elegirFoto': { args: [id: number]; resultado: boolean }
+  'modelos:quitarFoto': { args: [id: number]; resultado: void }
+
+  'unidades:sugerirCodigos': { args: [modeloId: number, cantidad: number]; resultado: string[] }
+  'unidades:piezasSugeridas': { args: [modeloId: number]; resultado: PiezaDatos[] }
+  'unidades:crear': { args: [datos: NuevasUnidades]; resultado: void }
+  'unidades:actualizar': { args: [id: number, datos: DatosUnidad]; resultado: void }
+  'unidades:cambiarEstado': { args: [id: number, estado: EstadoFisico]; resultado: void }
 }
 
 export type NombreCanal = keyof CanalesIpc
 export type ArgsDe<K extends NombreCanal> = CanalesIpc[K]['args']
 export type ResultadoDe<K extends NombreCanal> = CanalesIpc[K]['resultado']
 
+type Metodo<K extends NombreCanal> = (...args: ArgsDe<K>) => Promise<Resultado<ResultadoDe<K>>>
+
 /** API expuesta en `window.api` por el preload. */
 export interface ApiDisfraces {
-  app: {
-    info(): Promise<Resultado<InfoApp>>
+  app: { info: Metodo<'app:info'> }
+  config: { obtener: Metodo<'config:obtener'> }
+  modelos: {
+    listar: Metodo<'modelos:listar'>
+    obtener: Metodo<'modelos:obtener'>
+    categorias: Metodo<'modelos:categorias'>
+    crear: Metodo<'modelos:crear'>
+    actualizar: Metodo<'modelos:actualizar'>
+    cambiarPrecio: Metodo<'modelos:cambiarPrecio'>
+    darDeBaja: Metodo<'modelos:darDeBaja'>
+    reactivar: Metodo<'modelos:reactivar'>
+    elegirFoto: Metodo<'modelos:elegirFoto'>
+    quitarFoto: Metodo<'modelos:quitarFoto'>
   }
-  config: {
-    obtener(): Promise<Resultado<Configuracion>>
+  unidades: {
+    sugerirCodigos: Metodo<'unidades:sugerirCodigos'>
+    piezasSugeridas: Metodo<'unidades:piezasSugeridas'>
+    crear: Metodo<'unidades:crear'>
+    actualizar: Metodo<'unidades:actualizar'>
+    cambiarEstado: Metodo<'unidades:cambiarEstado'>
   }
 }

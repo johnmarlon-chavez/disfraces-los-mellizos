@@ -2,7 +2,10 @@
 
 export const ZONA_HORARIA = 'America/Lima'
 
-/** 2500 -> "S/ 25.00"; 125000 -> "S/ 1,250.00"; -500 -> "-S/ 5.00" */
+/**
+ * 2500 -> "S/ 25.00"; 125000 -> "S/ 1250.00"; -500 -> "-S/ 5.00"
+ * Sin separador de miles, para que un monto copiado de la pantalla se pueda volver a escribir tal cual.
+ */
 export function formatearSoles(centimos: number): string {
   if (!Number.isInteger(centimos)) {
     throw new Error(`El monto debe estar en céntimos enteros: ${centimos}`)
@@ -10,8 +13,6 @@ export function formatearSoles(centimos: number): string {
   const signo = centimos < 0 ? '-' : ''
   const absoluto = Math.abs(centimos)
   const soles = Math.floor(absoluto / 100)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   const cent = (absoluto % 100).toString().padStart(2, '0')
   return `${signo}S/ ${soles}.${cent}`
 }

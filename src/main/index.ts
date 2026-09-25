@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3'
 import { NOMBRE_TIENDA } from '../shared/constantes'
 import { abrirBaseDeDatos } from './db/conexion'
 import { mensajeParaUsuario } from './errores'
+import { atenderProtocoloFotos, registrarEsquemaFotos } from './fotos'
 import { registrarManejadores } from './ipc'
 import { obtenerRutas } from './rutas'
 
@@ -60,12 +61,17 @@ function iniciar(): void {
     return
   }
 
-  registrarManejadores(db, {
-    nombreTienda: NOMBRE_TIENDA,
-    version: app.getVersion(),
-    carpetaDatos: rutas.carpetaDatos,
-    esDesarrollo: !app.isPackaged
-  })
+  atenderProtocoloFotos(rutas.fotos)
+  registrarManejadores(
+    db,
+    {
+      nombreTienda: NOMBRE_TIENDA,
+      version: app.getVersion(),
+      carpetaDatos: rutas.carpetaDatos,
+      esDesarrollo: !app.isPackaged
+    },
+    rutas
+  )
 
   Menu.setApplicationMenu(null)
   ventana = crearVentana()
@@ -81,6 +87,7 @@ if (!app.requestSingleInstanceLock()) {
     ventana.focus()
   })
 
+  registrarEsquemaFotos()
   app.whenReady().then(iniciar)
 
   app.on('window-all-closed', () => app.quit())

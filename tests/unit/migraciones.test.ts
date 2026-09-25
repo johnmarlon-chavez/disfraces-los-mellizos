@@ -78,6 +78,34 @@ describe('aplicarMigraciones', () => {
     expect(() => aplicarMigraciones(db, [mala])).toThrow(/mal numeradas/)
   })
 
+  it('la migración 002 asigna prefijos únicos a los modelos existentes sin tocar sus unidades', () => {
+    const db = new Database(':memory:')
+    aplicarMigraciones(db, MIGRACIONES.slice(0, 1))
+    db.exec(`
+      INSERT INTO modelos (id, nombre, categoria, precio_alquiler) VALUES
+        (1, 'Hombre Araña', 'Superhéroes', 3500),
+        (2, 'Spiderman', 'Superhéroes', 3500),
+        (3, 'Spiderman Negro', 'Superhéroes', 3500),
+        (4, 'Araña Roja', 'Superhéroes', 3500);
+      INSERT INTO unidades (modelo_id, codigo, talla) VALUES
+        (1, 'ARA-001', '8'), (1, 'ARA-002', '10'),
+        (4, 'ARA-003', '8');
+    `)
+    aplicarMigraciones(db)
+    const filas = db.prepare('SELECT id, prefijo FROM modelos ORDER BY id').all()
+    expect(filas).toEqual([
+      { id: 1, prefijo: 'ARA' }, // tomado de sus códigos
+      { id: 2, prefijo: 'SPI' },
+      { id: 3, prefijo: 'SPN' },
+      { id: 4, prefijo: 'ARR' } // ARA ya estaba tomado por el modelo 1
+    ])
+    expect(db.prepare('SELECT codigo FROM unidades ORDER BY id').all()).toEqual([
+      { codigo: 'ARA-001' },
+      { codigo: 'ARA-002' },
+      { codigo: 'ARA-003' }
+    ])
+  })
+
   it('avisa con un mensaje claro si la base es de una versión más nueva del programa', () => {
     const db = new Database(':memory:')
     db.pragma(`user_version = ${MIGRACIONES.length + 1}`)

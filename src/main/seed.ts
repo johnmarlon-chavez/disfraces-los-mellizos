@@ -101,7 +101,7 @@ const CLIENTES: [string, string, string, string][] = [
 
 function sembrar(db: Database.Database): void {
   const insModelo = db.prepare(
-    'INSERT INTO modelos (nombre, categoria, descripcion, precio_alquiler) VALUES (?, ?, ?, ?)'
+    'INSERT INTO modelos (nombre, categoria, descripcion, precio_alquiler, prefijo) VALUES (?, ?, ?, ?, ?)'
   )
   const insUnidad = db.prepare(
     'INSERT INTO unidades (modelo_id, codigo, talla, estado_fisico) VALUES (?, ?, ?, ?)'
@@ -112,7 +112,7 @@ function sembrar(db: Database.Database): void {
   db.transaction(() => {
     let n = 0
     for (const m of MODELOS) {
-      const modeloId = insModelo.run(m.nombre, m.categoria, m.descripcion, m.precio).lastInsertRowid
+      const modeloId = insModelo.run(m.nombre, m.categoria, m.descripcion, m.precio, m.prefijo).lastInsertRowid
       m.tallas.forEach((talla, i) => {
         n++
         // Algunas unidades en lavandería o reparación para ver esos estados en pantalla.

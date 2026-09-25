@@ -7,11 +7,17 @@ describe('formatearSoles', () => {
     [5, 'S/ 0.05'],
     [2500, 'S/ 25.00'],
     [2550, 'S/ 25.50'],
-    [125000, 'S/ 1,250.00'],
-    [123456789, 'S/ 1,234,567.89'],
+    [125000, 'S/ 1250.00'],
+    [123456789, 'S/ 1234567.89'],
     [-500, '-S/ 5.00']
   ])('%i céntimos -> %s', (centimos, esperado) => {
     expect(formatearSoles(centimos)).toBe(esperado)
+  })
+
+  it('lo que se muestra se puede volver a escribir y da el mismo monto', () => {
+    for (const centimos of [0, 5, 2550, 125000, 123456789]) {
+      expect(leerMonto(formatearSoles(centimos))).toEqual({ ok: true, centimos })
+    }
   })
 
   it('rechaza montos que no son céntimos enteros', () => {

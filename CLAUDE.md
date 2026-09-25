@@ -42,7 +42,8 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 
 ## Modelo de datos
 
-- **modelos**: id, nombre, categoría, descripción, precio_alquiler, foto, activo
+- **modelos**: id, nombre, categoría, descripción, precio_alquiler, foto, activo, prefijo
+  - prefijo: único por modelo, base de los códigos de sus unidades ("Spiderman" → SPI, "Spiderman Negro" → SPN).
 - **unidades**: id, modelo_id, código (ej. SPI-001), talla, estado_fisico, observaciones
   - estado_fisico: `disponible`, `lavanderia`, `reparacion`, `baja`
   - "Alquilado" NO es un estado físico guardado: se deduce de los alquileres activos.
@@ -55,7 +56,8 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 - **cargos**: id, alquiler_id, unidad_id (opcional), tipo (`mora`, `dano`, `pieza_faltante`), monto, descripcion
 - **pagos**: id, alquiler_id, fecha, monto, concepto (`adelanto`, `saldo`, `garantia_recibida`, `garantia_devuelta`, `mora`, `dano`), medio (`efectivo`, `yape`, `plin`, `transferencia`, `tarjeta`)
 - **usuarios**: id, nombre, usuario, contraseña (hash con bcrypt), rol (`admin`, `empleado`), activo
-- **configuracion**: mora_por_dia, dias_margen_lavado, carpeta_respaldo, nombre_tienda
+- **configuracion**: mora_por_dia, dias_margen_lavado, precio_por_dia, carpeta_respaldo, nombre_tienda
+- **auditoria**: id, fecha, usuario_id, accion, entidad, entidad_id, detalle (JSON). Registra cambios de precio, de estado, bajas, etc.
 
 ## Reglas de negocio
 
@@ -120,9 +122,10 @@ Qué ve cada rol:
 - Cada operación (pedido, entrega, devolución, cambio de precio) registra qué cuenta la hizo y cuándo.
 
 ## Respaldos
-- Al cerrar la app, copiar la base de datos a la carpeta de respaldo configurada (por defecto una carpeta sincronizada con Google Drive o OneDrive), conservando los últimos 30 respaldos con fecha en el nombre.
+- Al cerrar la app, respaldar en la carpeta de respaldo configurada (por defecto una carpeta sincronizada con Google Drive o OneDrive), conservando los últimos 30 respaldos con fecha en el nombre.
+- Cada respaldo incluye **la base de datos y la carpeta `fotos\`**. Sin las fotos, restaurar dejaría los disfraces sin imagen.
 - Usar la API de backup de SQLite, no copiar el archivo mientras está abierto.
-- Opción en Configuración para "Restaurar un respaldo", con confirmación y creando antes un respaldo del estado actual.
+- Opción en Configuración para "Restaurar un respaldo" (base de datos y fotos), con confirmación y creando antes un respaldo del estado actual.
 
 ## Plan de trabajo por fases
 
@@ -160,9 +163,14 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 
 ### Estructura
 - `src/shared/` — contrato IPC tipado (`ipc.ts`) y formatos de soles/fechas; lo usan main, preload y renderer.
-- `src/main/` — proceso main: `db/` (conexión, migraciones, acceso a datos), `ipc.ts` (handlers), `errores.ts` (`ErrorDeNegocio` = mensaje para la usuaria). La lógica de negocio pura irá en `src/main/logica/`.
+- `src/main/` — proceso main:
+  - `logica/` — reglas de negocio puras, sin base de datos (prefijos, códigos, transiciones de estado, validaciones).
+  - `db/` — conexión, migraciones y acceso a datos; cada escritura en una transacción con su registro en `auditoria`.
+  - `ipc.ts` (handlers), `errores.ts` (`ErrorDeNegocio` = mensaje para la usuaria).
+  - `sesion.ts` — cuenta actual y `exigirDuena()`. **Fase 7:** hoy la sesión es `null` y se permite todo; al agregar el login, dar de baja y reactivar quedarán solo para la dueña sin cambiar nada más.
+  - `fotos.ts` — diálogo, reducción a 1200 px y protocolo `fotos://archivo/<nombre>`, que solo sirve archivos de la carpeta de fotos.
 - `src/preload/` — expone `window.api` según el contrato.
-- `src/renderer/` — React + Tailwind.
+- `src/renderer/` — React + Tailwind. Componentes base en `componentes/ui/` (Boton, CampoTexto, Dialogo, `useConfirmar()`, `useAvisos()`); usarlos en vez de `confirm()`/`alert()`.
 - Migraciones en `src/main/db/migraciones/`: agregar un archivo nuevo al final de la lista; nunca editar una migración ya publicada. La versión se guarda en `PRAGMA user_version`.
 
 ## Datos pendientes de confirmar con la dueña
