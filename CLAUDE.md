@@ -6,6 +6,17 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 
 **Fuera de alcance:** boletas, facturas, cualquier integración con SUNAT y cualquier tipo de impresión. El sistema NO imprime nada; los comprobantes los emite la trabajadora por fuera del sistema.
 
+## Contexto del negocio
+
+- La tienda alquila disfraces principalmente para **colegios**: danzas folclóricas peruanas de la **Costa** (marinera, festejo, tondero), la **Sierra** (huaylas, diablada, caporales) y la **Selva** (pandilla, danza de la anaconda), además de personajes para actuaciones escolares.
+- **Dos tipos de cliente:**
+  - **Colegios**, que llegan con pedidos grandes para un evento (por ejemplo, 30 trajes de huaylas para el Día de la Madre).
+  - **Personas** (padres de familia, profesores), que alquilan uno o pocos.
+- **Temporadas altas:** Día de la Madre, Fiestas Patrias, aniversarios de colegio, primavera y clausuras de diciembre. Varios colegios suelen pedir la misma danza en las mismas fechas.
+- **Tallas:** numéricas para inicial y primaria (4, 6, 8, 10, 12, 14, 16) y de letra (S, M, L, XL) para secundaria y profesores. Siempre ordenarlas de forma lógica: numéricas de menor a mayor y luego S, M, L, XL. **Nunca orden alfabético.**
+- **Todo es alquiler:** los trajes siempre se devuelven. Si no alcanzan las unidades para un pedido, la tienda **confecciona las que faltan**, y esas unidades nuevas entran al inventario como cualquier otra.
+- Las danzas con traje de varón y de mujer se registran como **modelos distintos** (ej. "Marinera varón" y "Marinera mujer").
+
 ## Stack
 
 - Electron + React + TypeScript (Vite como bundler)
@@ -42,14 +53,20 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 
 ## Modelo de datos
 
-- **modelos**: id, nombre, categoría, descripción, precio_alquiler, foto, activo, prefijo
+- **modelos**: id, nombre, categoría, descripción, precio_alquiler, foto, activo, prefijo, region
   - prefijo: único por modelo, base de los códigos de sus unidades ("Spiderman" → SPI, "Spiderman Negro" → SPN).
+  - region: `costa`, `sierra`, `selva` o vacío si no aplica (personajes, superhéroes...).
 - **unidades**: id, modelo_id, código (ej. SPI-001), talla, estado_fisico, observaciones
   - estado_fisico: `disponible`, `lavanderia`, `reparacion`, `baja`
   - "Alquilado" NO es un estado físico guardado: se deduce de los alquileres activos.
 - **piezas**: id, unidad_id, nombre (máscara, peluca, guantes...), costo_reposicion
-- **clientes**: id, dni (único), nombres, teléfono, dirección, observaciones, activo
-- **alquileres**: id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, fecha_devolucion_real, estado, garantia_tipo, garantia_monto, garantia_devuelta, observaciones
+- **clientes**: id, tipo, dni (único), nombres, responsable, dni_responsable, teléfono, dirección, observaciones, activo
+  - tipo: `persona`, `colegio`
+  - dni: obligatorio solo para personas; único cuando existe.
+  - responsable: profesora o coordinadora a cargo (para colegios). dni_responsable: su DNI.
+- **alquileres**: id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, fecha_devolucion_real, estado, garantia_tipo, garantia_monto, garantia_devuelta, evento, grado_seccion, observaciones
+  - evento: texto libre con sugerencias (Día de la Madre, Fiestas Patrias, aniversario, primavera, clausura...).
+  - grado_seccion: opcional (ej. "3.° B").
   - estado: `reservado`, `entregado`, `devuelto`, `cancelado`
   - garantia_tipo: `efectivo`, `dni`
 - **detalle_alquiler**: id, alquiler_id, unidad_id, precio_original, precio_cobrado, estado_devolucion, observaciones
@@ -58,6 +75,8 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 - **usuarios**: id, nombre, usuario, contraseña (hash con bcrypt), rol (`admin`, `empleado`), activo
 - **configuracion**: mora_por_dia, dias_margen_lavado, precio_por_dia, carpeta_respaldo, nombre_tienda
 - **auditoria**: id, fecha, usuario_id, accion, entidad, entidad_id, detalle (JSON). Registra cambios de precio, de estado, bajas, etc.
+- **pendientes_confeccion**: id, alquiler_id, modelo_id, talla, cantidad, fecha_limite, estado, observaciones
+  - estado: `pendiente`, `en_confeccion`, `listo`
 
 ## Reglas de negocio
 
@@ -71,6 +90,9 @@ La validación se hace en el proceso main, dentro de una transacción, justo ant
 
 ### Flujos
 1. **Reservar (pedido)**: elegir cliente (o crearlo en la misma pantalla) → elegir fechas → ir agregando disfraces al pedido (buscar modelo + talla, mostrando solo unidades libres en esas fechas) → registrar adelanto.
+   - **Agregar por cantidad:** además de uno por uno, se puede agregar modelo + talla + cantidad (ej. "Huaylas talla 10 × 8"). El sistema asigna solo unidades libres en esas fechas y deja cambiar alguna a mano.
+   - **Si no alcanzan:** decirlo claro ("Hay 5 libres, faltan 3") y ofrecer registrar las que faltan como **pendientes de confección** con fecha límite. El pedido se guarda igual.
+   - Cuando las unidades nuevas estén listas, se agregan desde Disfraces y se asignan al pedido.
 
 ### Cálculo del monto del pedido
 La pantalla del pedido funciona como un carrito: cada vez que se agrega o quita un disfraz, los montos se recalculan al instante y se muestran siempre visibles:
@@ -85,7 +107,9 @@ La pantalla del pedido funciona como un carrito: cada vez que se agrega o quita 
 - El cambio aplica a los pedidos nuevos. El precio de cada disfraz se copia al pedido al momento de agregarlo, así que los pedidos anteriores conservan el precio con el que se hicieron.
 - Dentro de un pedido, se puede ajustar el precio de un disfraz solo para ese pedido (por ejemplo, un descuento), sin tocar el precio general. El sistema guarda el precio original y el precio cobrado, para que la dueña vea en los reportes qué pedidos tuvieron descuento. Si se confirma que el precio es por día, el precio de cada disfraz se multiplica por la cantidad de días del alquiler.
 2. **Entregar**: cobrar saldo → registrar garantía (efectivo o DNI en prenda) → estado `entregado`.
+   - No se puede entregar un pedido con pendientes de confección sin resolver, salvo que **la dueña** confirme entregar lo disponible.
 3. **Devolver**: revisar cada unidad con checklist de sus piezas → calcular mora = días de retraso × mora_por_dia → registrar daños y piezas faltantes → descontar todo de la garantía → mostrar claramente cuánto se le devuelve al cliente o cuánto falta cobrar → unidades pasan a `lavanderia`.
+   - **Devolución parcial:** cada unidad se recibe por separado y la mora se calcula por unidad.
 4. **Liberar**: marcar unidades de `lavanderia` o `reparacion` como `disponible`.
 
 ### Historial del cliente
@@ -94,12 +118,16 @@ En la ficha del cliente mostrar: alquileres totales, devoluciones tardías, carg
 ## Pantalla de inicio
 Al abrir la app, tras el login: entregas de hoy, devoluciones de hoy, **devoluciones vencidas** (destacadas en rojo) y unidades en lavandería o reparación.
 
+También los **pendientes de confección**, ordenados por fecha límite, destacando los que vencen en los próximos 7 días.
+
 ## Reportes
 - Disfraces fuera ahora mismo y cuándo vuelven
 - Alquileres vencidos
 - Ingresos por día y por mes, separando alquiler, mora y daños (la garantía NO es ingreso)
-- Disfraces más alquilados
-- Calendario de ocupación por modelo, útil para temporadas altas (Halloween, Fiestas Patrias, carnavales, fin de año escolar)
+- Disfraces más alquilados, filtrables por región y por evento
+- Alquileres por colegio y por evento
+- Pendientes de confección
+- Calendario de ocupación por modelo, útil para las temporadas altas escolares (Día de la Madre, Fiestas Patrias, aniversarios de colegio, primavera, clausuras de diciembre)
 
 ## Seguridad
 Confirmado: el sistema se instala en UNA sola computadora (la laptop de la dueña). No se necesita red ni sincronización entre equipos.
@@ -133,9 +161,10 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 
 1. **Base**: proyecto Electron + React + TS + Vite + Tailwind, IPC tipado, SQLite con migraciones, layout con menú lateral, datos de prueba (seed).
 2. **Disfraces**: modelos, unidades, piezas, fotos, cambio de estado físico.
-3. **Clientes**: registro, búsqueda por DNI o nombre, ficha con historial.
-4. **Reservas**: búsqueda de disponibilidad, creación de reserva, adelanto. Pruebas unitarias exhaustivas de la regla de disponibilidad.
-5. **Entrega y devolución**: flujos completos, mora, cargos, pagos, liquidación de garantía.
+   - **Ajuste antes de la Fase 3:** región en modelos y orden lógico de tallas.
+3. **Clientes**: registro, búsqueda por DNI o nombre, ficha con historial. Incluye clientes tipo colegio.
+4. **Reservas**: búsqueda de disponibilidad, creación de reserva, adelanto. Pruebas unitarias exhaustivas de la regla de disponibilidad. Incluye pedidos por cantidad y pendientes de confección.
+5. **Entrega y devolución**: flujos completos, mora, cargos, pagos, liquidación de garantía. Incluye devolución parcial.
 6. **Inicio y reportes**.
 7. **Usuarios y roles**: las dos cuentas, permisos por rol y cambio de contraseña.
 8. **Respaldos y restauración**.
