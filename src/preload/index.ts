@@ -68,6 +68,22 @@ const api: ApiDisfraces = {
     rebajarMora: canal('entregas:rebajarMora'),
     cancelarLoQueFalta: canal('entregas:cancelarLoQueFalta'),
     liberar: canal('entregas:liberar')
+  },
+  inicio: {
+    datos: canal('inicio:datos'),
+    liberarUnidades: canal('unidades:liberar')
+  },
+  reportes: {
+    ingresos: canal('reportes:ingresos'),
+    medios: canal('reportes:medios'),
+    fuera: canal('reportes:fuera'),
+    vencidos: canal('reportes:vencidos'),
+    masAlquilados: canal('reportes:masAlquilados'),
+    agrupados: canal('reportes:agrupados'),
+    confeccion: canal('reportes:confeccion'),
+    calendario: canal('reportes:calendario'),
+    descuentos: canal('reportes:descuentos'),
+    deudas: canal('reportes:deudas')
   }
 }
 

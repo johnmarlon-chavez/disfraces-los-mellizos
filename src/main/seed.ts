@@ -10,7 +10,9 @@ import type { Region } from '../shared/disfraces'
 import { sumarDias } from '../shared/fechas'
 import { hoyEnLima } from '../shared/formato'
 import { abrirBaseDeDatos } from './db/conexion'
-import { asignarUnidades, crearPedido } from './db/pedidos'
+import { cancelarPedido, obtenerPedido, asignarUnidades, crearPedido } from './db/pedidos'
+import { devolver, entregar, liquidar } from './db/entregas'
+import type { DatosEntrega, UnidadADevolver } from '../shared/entregas'
 import { obtenerRutas } from './rutas'
 
 interface ModeloSemilla {
@@ -245,6 +247,7 @@ function sembrar(db: Database.Database): void {
     for (const c of COLEGIOS) insColegio.run(...c)
   })()
   sembrarPedidos(db)
+  sembrarHistoria(db)
 }
 
 /** Dos reservas de ejemplo, con fechas relativas a hoy, creadas con la lógica real de pedidos. */
@@ -328,21 +331,19 @@ function apartarBaseActual(rutaBase: string): string | null {
   return destino
 }
 
+// Cualquier error termina el proceso: sin ventanas, Electron se quedaría abierto para siempre.
 app.whenReady().then(() => {
-  const rutas = obtenerRutas()
-  if (app.isPackaged || !basename(rutas.carpetaDatos).endsWith('-dev')) {
-    console.error('El seed solo se usa con la base de desarrollo (carpeta SistemaDisfraces-dev).')
-    app.exit(1)
-    return
-  }
-
-  if (process.argv.includes('--reiniciar')) {
-    const apartada = apartarBaseActual(rutas.baseDeDatos)
-    if (apartada) console.log(`Base anterior guardada como ${apartada}`)
-  }
-
-  const db = abrirBaseDeDatos(rutas.baseDeDatos)
+  let db: Database.Database | null = null
   try {
+    const rutas = obtenerRutas()
+    if (app.isPackaged || !basename(rutas.carpetaDatos).endsWith('-dev')) {
+      throw new Error('El seed solo se usa con la base de desarrollo (carpeta SistemaDisfraces-dev).')
+    }
+    if (process.argv.includes('--reiniciar')) {
+      const apartada = apartarBaseActual(rutas.baseDeDatos)
+      if (apartada) console.log(`Base anterior guardada como ${apartada}`)
+    }
+    db = abrirBaseDeDatos(rutas.baseDeDatos)
     const { total } = db.prepare('SELECT COUNT(*) AS total FROM modelos').get() as { total: number }
     if (total > 0) {
       console.log(`La base ya tiene datos (${rutas.baseDeDatos}). Use "npm run seed:reiniciar" para empezar de cero.`)
@@ -353,8 +354,150 @@ app.whenReady().then(() => {
     db.close()
     app.exit(0)
   } catch (error) {
-    console.error(error)
-    db.close()
+    const codigo = (error as NodeJS.ErrnoException).code
+    console.error(
+      codigo === 'EBUSY' || codigo === 'EPERM'
+        ? 'La base de desarrollo está abierta en el programa. Ciérrelo y vuelva a intentarlo.'
+        : error
+    )
+    db?.close()
     app.exit(1)
   }
 })
+
+/**
+ * Historia de los últimos meses para ver Inicio y los reportes con datos: pedidos devueltos a tiempo
+ * y tarde, con daños, uno cancelado con adelanto retenido, uno con deuda, uno vencido, una reserva
+ * no recogida, una devolución y una entrega para hoy. Se crean con la lógica real, pasando un "hoy"
+ * en el pasado; los pagos se fechan en su día (a las 10 a. m. de Lima).
+ */
+function sembrarHistoria(db: Database.Database): void {
+  const H = hoyEnLima()
+  const dia = (n: number): string => sumarDias(H, n)
+  const cliente = (nombre: string): number => (db.prepare('SELECT id FROM clientes WHERE nombres = ?').get(nombre) as { id: number }).id
+  const modelo = (prefijo: string): number => (db.prepare('SELECT id FROM modelos WHERE prefijo = ?').get(prefijo) as { id: number }).id
+  const ultimoPago = (): number => (db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM pagos').get() as { n: number }).n
+  const fechar = <T,>(fecha: string, fn: () => T): T => {
+    const antes = ultimoPago()
+    const r = fn()
+    db.prepare('UPDATE pagos SET fecha = ? WHERE id > ?').run(`${fecha}T15:00:00.000Z`, antes)
+    return r
+  }
+
+  const reservar = (
+    nombre: string,
+    prefijo: string,
+    talla: string,
+    cantidad: number,
+    reserva: number,
+    salida: number,
+    devolucion: number,
+    evento: string,
+    adelanto: number
+  ): number =>
+    fechar(dia(reserva), () => {
+      const rango = { inicio: dia(salida), fin: dia(devolucion) }
+      const r = asignarUnidades(db, { modeloId: modelo(prefijo), talla, cantidad, rango, excluirAlquilerId: null, yaEnCarrito: [] }, dia(reserva))
+      return crearPedido(
+        db,
+        {
+          clienteId: cliente(nombre),
+          fechaSalida: rango.inicio,
+          fechaDevolucionPactada: rango.fin,
+          evento,
+          gradoSeccion: '',
+          observaciones: '',
+          garantiaTipo: null,
+          garantiaMonto: 0,
+          lineas: r.asignadas.map((u) => ({ unidadId: u.unidadId, precioCobrado: u.precioSugerido })),
+          pendientes: [],
+          adelanto: adelanto > 0 ? { monto: adelanto, medio: 'yape' } : null
+        },
+        null,
+        dia(reserva)
+      )
+    })
+
+  const entregarTodo = (pid: number, n: number, garantia: DatosEntrega['garantia']): void => {
+    fechar(dia(n), () => {
+      const p = obtenerPedido(db, pid)
+      entregar(
+        db,
+        pid,
+        {
+          detalleIds: p.lineas.map((l) => l.detalleId),
+          adelantarSalida: false,
+          lavanderiaConfirmada: true,
+          pagos: p.totales.saldo > 0 ? [{ monto: p.totales.saldo, medio: 'efectivo' }] : [],
+          saldoPendienteAutorizado: false,
+          garantia
+        },
+        null,
+        null,
+        dia(n)
+      )
+    })
+    db.prepare('UPDATE alquileres SET entregado_en = ? WHERE id = ?').run(`${dia(n)}T15:00:00.000Z`, pid)
+  }
+
+  const devolverTodo = (pid: number, n: number, ajustes: (l: { codigo: string; piezas: { id: number; nombre: string; costoReposicion: number }[] }) => Partial<UnidadADevolver> = () => ({})): void => {
+    const p = obtenerPedido(db, pid)
+    devolver(
+      db,
+      pid,
+      {
+        fecha: dia(n),
+        unidades: p.lineas.map((l) => ({ detalleId: l.detalleId, piezasFaltantes: [], dano: null, destino: 'lavanderia', observaciones: '', ...ajustes(l) }))
+      },
+      null,
+      dia(n)
+    )
+    fechar(dia(n), () => liquidar(db, pid, { cobros: [], medioDevolucion: 'efectivo' }, null))
+  }
+
+  const dni = (documento: string): DatosEntrega['garantia'] => ({ tipo: 'dni', monto: 0, medio: 'efectivo', documento })
+  const efectivo = (monto: number): DatosEntrega['garantia'] => ({ tipo: 'efectivo', monto, medio: 'efectivo', documento: '' })
+
+  // a) Colegio, devuelto a tiempo
+  const a = reservar('I.E. Los Girasoles', 'CAM', '10', 4, -70, -60, -58, 'Día de la Madre', 10000)
+  entregarTodo(a, -60, dni('45678901'))
+  devolverTodo(a, -58)
+
+  // b) Persona, 2 días tarde: la mora se descuenta de la garantía
+  const b = reservar('María Quispe Huamán', 'PIR', '8', 1, -45, -40, -39, 'Otro', 1000)
+  entregarTodo(b, -40, efectivo(5000))
+  devolverTodo(b, -37)
+
+  // c) Colegio, con un daño y una pieza faltante
+  const c = reservar('Colegio Santa Rosita', 'CAV', '12', 3, -35, -30, -28, 'Aniversario del colegio', 5000)
+  entregarTodo(c, -30, efectivo(15000))
+  devolverTodo(c, -28, (l) => {
+    if (l.codigo.endsWith('001')) return { dano: { monto: 2500, descripcion: 'manga descosida' }, destino: 'reparacion' }
+    const cascabeles = l.piezas.find((x) => x.nombre === 'Cascabeles')
+    if (l.codigo.endsWith('002') && cascabeles) return { piezasFaltantes: [{ piezaId: cascabeles.id, monto: cascabeles.costoReposicion }] }
+    return {}
+  })
+
+  // d) Cancelado: adelanto de 60, se devuelven 20 y se retienen 40
+  const d = reservar('I.E.P. Nuevo Amanecer', 'MAM', '10', 3, -20, -10, -8, 'Primavera', 6000)
+  fechar(dia(-15), () => cancelarPedido(db, d, { tipo: 'devolver_parte', monto: 2000, medio: 'yape' }, null))
+
+  // e) Daño mayor que la garantía: queda debiendo
+  const e = reservar('José Ramírez Flores', 'DIA', '12', 1, -14, -12, -10, 'Otro', 0)
+  entregarTodo(e, -12, efectivo(3000))
+  devolverTodo(e, -9, () => ({ dano: { monto: 8000, descripcion: 'máscara rota' }, destino: 'reparacion' }))
+
+  // f) Vencido: debía volver hace 3 días (garantía en custodia)
+  const f = reservar('Carlos Vargas Chávez', 'FEM', '8', 2, -8, -5, -3, 'Primavera', 2000)
+  entregarTodo(f, -5, efectivo(6000))
+
+  // g) Reserva no recogida
+  reservar('Rosa Mendoza Torres', 'PRI', '6', 1, -6, -1, 1, 'Otro', 1000)
+
+  // h) Devolución para hoy
+  const h = reservar('Ana Lucía Pérez Rojas', 'TOM', '10', 1, -5, -2, 0, 'Otro', 0)
+  entregarTodo(h, -2, dni('001234567'))
+
+  // i) Entrega para hoy
+  reservar('I.E.P. Nuevo Amanecer', 'HUV', '10', 3, -3, 0, 2, 'Aniversario del colegio', 5000)
+}

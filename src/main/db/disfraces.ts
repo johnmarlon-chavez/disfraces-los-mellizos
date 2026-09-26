@@ -465,3 +465,18 @@ export function cambiarEstadoUnidad(
     })
   })()
 }
+
+/** Marca como disponibles varias unidades en lavandería o reparación (por ejemplo, desde Inicio). */
+export function liberarUnidades(db: Db, ids: number[], sesion: Sesion | null): string[] {
+  if (ids.length === 0) throw new ErrorDeNegocio('Elija las unidades que ya están listas.')
+  return db.transaction(() =>
+    ids.map((id) => {
+      const u = filaUnidad(db, id)
+      if (u.estado_fisico !== 'lavanderia' && u.estado_fisico !== 'reparacion') {
+        throw new ErrorDeNegocio(`${u.codigo} no está en lavandería ni en reparación.`)
+      }
+      cambiarEstadoUnidad(db, id, 'disponible', sesion)
+      return u.codigo
+    })
+  )()
+}

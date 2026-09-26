@@ -156,7 +156,19 @@ Al abrir la app, tras el login: entregas de hoy, devoluciones de hoy, **devoluci
 
 También los **pendientes de confección**, ordenados por fecha límite, destacando los que vencen en los próximos 7 días.
 
+Orden de las tarjetas, por urgencia (lo importante se ve sin bajar a 1366×768; las tarjetas vacías se muestran compactas en una línea):
+1. Devoluciones vencidas (rojo: días de retraso, lo que falta, teléfono, mora estimada si devolviera hoy) y reservas no recogidas.
+2. Entregas de hoy (incluye lo que falta entregar de pedidos entregados en parte) y devoluciones de hoy.
+3. Pendientes de confección (vencidos en rojo; los que vencen en 7 días, destacados).
+4. Lavandería y reparación (se pueden marcar varias como disponibles a la vez), próximas entregas (7 días) y clientes que deben.
+
+Solo la dueña ve el **dinero de hoy** y las **garantías en custodia** (dinero de garantías recibido que todavía no se devolvió ni se usó para cubrir deudas: no es de la tienda).
+
 ## Reportes
+- **Ingresos** por la fecha en que entró el dinero (en hora de Lima): así el total de un mes pasado nunca cambia. Categorías: alquiler, **adelantos retenidos** (de pedidos cancelados, menos lo devuelto), mora, daños y faltantes. La garantía no es ingreso; lo tomado de la garantía al cerrar sí (como pago de su concepto). Si un pedido se cancela después, sus adelantos pasan de "alquiler" a "retenidos" en la fecha en que se pagaron. Las deudas se muestran aparte como "por cobrar".
+- **Caja por medio de pago:** lo que entró y salió de verdad (incluidas garantías) por efectivo, Yape, Plin, transferencia y tarjeta; y las **garantías en custodia** con el detalle por pedido.
+- Pedidos con descuento y moras rebajadas o perdonadas (con su motivo).
+- Clientes que deben (con el documento retenido).
 - Disfraces fuera ahora mismo y cuándo vuelven
 - Alquileres vencidos
 - Ingresos por día y por mes, separando alquiler, mora y daños (la garantía NO es ingreso)
@@ -216,7 +228,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 | `npm install` | Instala dependencias y descarga el binario precompilado de better-sqlite3 para Electron (`postinstall`). |
 | `npm run dev` | App en modo desarrollo con recarga en caliente. Datos en `Documentos\SistemaDisfraces-dev\`. |
 | `npm run seed` | Carga datos de prueba en la base de desarrollo (solo si está vacía). |
-| `npm run seed:reiniciar` | Guarda la base de desarrollo actual como `datos-anterior-<fecha>.db` (no la borra) y vuelve a cargar los datos de prueba. |
+| `npm run seed:reiniciar` | Guarda la base de desarrollo actual como `datos-anterior-<fecha>.db` (no la borra) y vuelve a cargar los datos de prueba. Cerrar antes la app si está abierta. |
 | `npm test` | Pruebas unitarias con Vitest (corren dentro de Electron). |
 | `npm run test:e2e` | Compila y ejecuta las pruebas E2E con Playwright (usa una carpeta de datos temporal). |
 | `npm run typecheck` | Verificación de tipos (main/preload y renderer). |
@@ -231,6 +243,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - `DISFRACES_DATOS_DIR` cambia la carpeta de datos (lo usan las pruebas E2E).
 - Pruebas E2E con días de retraso: `tests/e2e/entregas.spec.ts` adelanta el reloj de la app (main y ventana) en lugar de manipular la base.
 - Si las pruebas E2E fallan todas con `ECONNRESET`, quedó un Electron abierto (instancia única): cerrarlo y reintentar.
+- El seed crea también historia de los últimos meses (devueltos, con daños, cancelado, con deuda, vencido, no recogido) usando las funciones reales con un "hoy" en el pasado, y fecha los pagos en su día. Para probarlo sin tocar la base de desarrollo: `DISFRACES_DATOS_DIR=<carpeta>-dev npx electron out/main/seed.js` (el nombre de la carpeta debe terminar en `-dev`).
 - Electron arranca con `--lang=es-PE` (Chromium lo sirve como `es-419`) para que los campos de fecha muestren dd/mm/aaaa.
 - En layouts de dos columnas usar `grid-cols-[minmax(0,1fr)_…]`, no `1fr`: con `1fr` el contenido largo desborda a 1366×768.
 
@@ -238,6 +251,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - `src/shared/` — contrato IPC tipado (`ipc.ts`), formatos de soles/fechas y reglas compartidas de disfraces (`disfraces.ts`: `TALLAS`, `normalizarTalla`, `compararTallas`/`ordenarTallas`, `filtrarModelos`); lo usan main, preload y renderer. Ordenar tallas siempre con `compararTallas`, nunca con orden alfabético.
 - `src/main/` — proceso main:
   - `logica/` — reglas de negocio puras, sin base de datos: `disponibilidad.ts` (la regla de disponibilidad y la asignación por cantidad), `mora.ts`, `liquidacion.ts` (estado de cuenta y cobertura de la garantía), `pedidos.ts`, `clientes.ts`, `disfraces.ts`.
+  - `logica/reportes.ts` — clasificación de pagos en ingresos, agrupación por día y mes en hora de Lima, caja por medio de pago, custodia y ocupación por día (con la misma regla de disponibilidad). `db/reportes.ts` — datos de Inicio y consultas de reportes (los canales de reportes pasan por `exigirDuena()`).
   - `db/entregas.ts` — entregar, devolver (con previsualización exacta: se aplica en una transacción y se deshace), liquidar, pagos de deuda, rebaja de mora. `db/cuentas.ts` — estado de cuenta de cada pedido y deudas por cliente.
   - `db/` — conexión, migraciones y acceso a datos; cada escritura en una transacción con su registro en `auditoria`.
   - `ipc.ts` (handlers), `errores.ts` (`ErrorDeNegocio` = mensaje para la usuaria).

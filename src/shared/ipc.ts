@@ -3,6 +3,21 @@
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
 import type { AutorizacionDuena } from './autorizacion'
 import type {
+  CalendarioOcupacion,
+  DatosInicio,
+  DeudaInicio,
+  FilaAgrupada,
+  FilaConfeccion,
+  FilaMasAlquilado,
+  MoraRebajada,
+  PedidoConDescuento,
+  PedidoFuera,
+  PedidoInicio,
+  Periodo,
+  ReporteIngresos,
+  ReporteMedios
+} from './reportes'
+import type {
   DatosDevolucion,
   DatosEntrega,
   DatosLiquidacion,
@@ -25,6 +40,7 @@ import type {
   NuevasUnidades,
   NuevoModelo,
   PiezaDatos,
+  Region,
   ResumenModelo
 } from './disfraces'
 import type {
@@ -154,6 +170,20 @@ export interface CanalesIpc {
   }
   'entregas:cancelarLoQueFalta': { args: [id: number, autorizacion: AutorizacionDuena | null]; resultado: void }
   'entregas:liberar': { args: [id: number]; resultado: string[] }
+
+  'inicio:datos': { args: []; resultado: DatosInicio }
+  'unidades:liberar': { args: [ids: number[]]; resultado: string[] }
+
+  'reportes:ingresos': { args: [periodo: Periodo]; resultado: ReporteIngresos }
+  'reportes:medios': { args: [periodo: Periodo]; resultado: ReporteMedios }
+  'reportes:fuera': { args: []; resultado: PedidoFuera[] }
+  'reportes:vencidos': { args: []; resultado: { vencidas: PedidoInicio[]; noRecogidas: PedidoInicio[] } }
+  'reportes:masAlquilados': { args: [periodo: Periodo, region: Region | '', evento: string]; resultado: FilaMasAlquilado[] }
+  'reportes:agrupados': { args: [periodo: Periodo, por: 'colegio' | 'evento']; resultado: FilaAgrupada[] }
+  'reportes:confeccion': { args: []; resultado: FilaConfeccion[] }
+  'reportes:calendario': { args: [modeloId: number, mes: string]; resultado: CalendarioOcupacion }
+  'reportes:descuentos': { args: [periodo: Periodo]; resultado: { pedidos: PedidoConDescuento[]; moras: MoraRebajada[] } }
+  'reportes:deudas': { args: []; resultado: DeudaInicio[] }
 }
 
 export type NombreCanal = keyof CanalesIpc
@@ -226,5 +256,21 @@ export interface ApiDisfraces {
     rebajarMora: Metodo<'entregas:rebajarMora'>
     cancelarLoQueFalta: Metodo<'entregas:cancelarLoQueFalta'>
     liberar: Metodo<'entregas:liberar'>
+  }
+  inicio: {
+    datos: Metodo<'inicio:datos'>
+    liberarUnidades: Metodo<'unidades:liberar'>
+  }
+  reportes: {
+    ingresos: Metodo<'reportes:ingresos'>
+    medios: Metodo<'reportes:medios'>
+    fuera: Metodo<'reportes:fuera'>
+    vencidos: Metodo<'reportes:vencidos'>
+    masAlquilados: Metodo<'reportes:masAlquilados'>
+    agrupados: Metodo<'reportes:agrupados'>
+    confeccion: Metodo<'reportes:confeccion'>
+    calendario: Metodo<'reportes:calendario'>
+    descuentos: Metodo<'reportes:descuentos'>
+    deudas: Metodo<'reportes:deudas'>
   }
 }

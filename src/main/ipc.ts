@@ -7,9 +7,10 @@ import * as clientes from './db/clientes'
 import * as disfraces from './db/disfraces'
 import * as entregas from './db/entregas'
 import * as pedidos from './db/pedidos'
+import * as reportes from './db/reportes'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
-import { obtenerSesion } from './sesion'
+import { exigirDuena, obtenerSesion } from './sesion'
 
 type Manejador<K extends NombreCanal> = (...args: ArgsDe<K>) => ResultadoDe<K> | Promise<ResultadoDe<K>>
 
@@ -97,4 +98,25 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   )
   manejar('entregas:cancelarLoQueFalta', (id, aut) => entregas.cancelarLoQueFalta(db, id, obtenerSesion(), aut))
   manejar('entregas:liberar', (id) => entregas.liberarUnidades(db, id, obtenerSesion()))
+
+  manejar('inicio:datos', () => reportes.datosInicio(db, obtenerSesion()))
+  manejar('unidades:liberar', (ids) => disfraces.liberarUnidades(db, ids, obtenerSesion()))
+
+  // Reportes: solo la dueña (con sesión null, mientras no hay login, se permite).
+  const soloDuena = <T,>(fn: () => T): T => {
+    exigirDuena(obtenerSesion(), 'ver los reportes')
+    return fn()
+  }
+  manejar('reportes:ingresos', (periodo) => soloDuena(() => reportes.reporteIngresos(db, periodo)))
+  manejar('reportes:medios', (periodo) => soloDuena(() => reportes.reporteMedios(db, periodo)))
+  manejar('reportes:fuera', () => soloDuena(() => reportes.disfracesFuera(db)))
+  manejar('reportes:vencidos', () => soloDuena(() => reportes.vencidosYNoRecogidos(db)))
+  manejar('reportes:masAlquilados', (periodo, region, evento) =>
+    soloDuena(() => reportes.masAlquilados(db, periodo, region, evento))
+  )
+  manejar('reportes:agrupados', (periodo, por) => soloDuena(() => reportes.alquileresAgrupados(db, periodo, por)))
+  manejar('reportes:confeccion', () => soloDuena(() => reportes.confeccion(db)))
+  manejar('reportes:calendario', (modeloId, mes) => soloDuena(() => reportes.calendarioOcupacion(db, modeloId, mes)))
+  manejar('reportes:descuentos', (periodo) => soloDuena(() => reportes.descuentos(db, periodo)))
+  manejar('reportes:deudas', () => soloDuena(() => reportes.deudas(db)))
 }
