@@ -147,7 +147,7 @@ describe('esquema inicial', () => {
       diasMargenLavado: 1,
       precioPorDia: false,
       carpetaRespaldo: '',
-      nombreTienda: 'Librería AB'
+      nombreTienda: 'Disfraces Los Mellizos'
     })
     expect(() => db.prepare('INSERT INTO configuracion (id, mora_por_dia, dias_margen_lavado, nombre_tienda) VALUES (2, 0, 0, ?)').run('x')).toThrow(/CHECK/)
   })

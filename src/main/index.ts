@@ -89,9 +89,6 @@ if (!app.requestSingleInstanceLock()) {
 
   // Interfaz de Chromium en español de Perú: los campos de fecha muestran dd/mm/aaaa.
   app.commandLine.appendSwitch('lang', 'es-PE')
-  // Electron pone el nombre del producto en el User-Agent; con tildes ("Librería AB") la petición
-  // del protocolo fotos:// falla y las fotos no cargan. Se deja el User-Agent sin tildes.
-  app.userAgentFallback = app.userAgentFallback.normalize('NFD').replace(/[^\x20-\x7E]/g, '')
   registrarEsquemaFotos()
   app.whenReady().then(iniciar)
 

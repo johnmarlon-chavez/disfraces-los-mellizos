@@ -1,8 +1,8 @@
 {
   "name": "disfraces-los-mellizos",
-  "productName": "Librería AB",
+  "productName": "Disfraces Los Mellizos",
   "version": "0.1.0",
-  "description": "Sistema de alquiler de disfraces - Librería AB",
+  "description": "Sistema de alquiler de disfraces - Disfraces Los Mellizos",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
