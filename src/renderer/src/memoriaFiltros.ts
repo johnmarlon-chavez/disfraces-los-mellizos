@@ -1,6 +1,12 @@
 import type { FiltroClientes } from '../../shared/clientes'
 import type { FiltroModelos } from '../../shared/disfraces'
 
+export interface FiltroPedidos {
+  texto: string
+  /** 'activos' = reservados y entregados. */
+  estado: 'activos' | 'reservado' | 'entregado' | 'todos'
+}
+
 // Últimos filtros de cada lista, para restaurarlos al volver desde una ficha.
 // Entrar desde el menú lateral muestra la lista sin filtros.
 
@@ -31,3 +37,5 @@ export const memoriaDisfraces = crearMemoria<FiltroModelos>({
 })
 
 export const memoriaClientes = crearMemoria<FiltroClientes>({ texto: '', tipo: '', incluirInactivos: false })
+
+export const memoriaPedidos = crearMemoria<FiltroPedidos>({ texto: '', estado: 'activos' })

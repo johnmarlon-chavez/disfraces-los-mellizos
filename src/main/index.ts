@@ -87,6 +87,8 @@ if (!app.requestSingleInstanceLock()) {
     ventana.focus()
   })
 
+  // Interfaz de Chromium en español de Perú: los campos de fecha muestran dd/mm/aaaa.
+  app.commandLine.appendSwitch('lang', 'es-PE')
   registrarEsquemaFotos()
   app.whenReady().then(iniciar)
 

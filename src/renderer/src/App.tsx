@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router'
 import Layout from './componentes/Layout'
 import Inicio from './paginas/Inicio'
 import Alquileres from './paginas/Alquileres'
+import FichaPedido from './paginas/FichaPedido'
+import PantallaPedido from './paginas/PantallaPedido'
 import Disfraces from './paginas/Disfraces'
 import FichaDisfraz from './paginas/FichaDisfraz'
 import NuevoDisfraz from './paginas/NuevoDisfraz'
@@ -17,6 +19,9 @@ export default function App(): React.JSX.Element {
       <Route element={<Layout />}>
         <Route index element={<Inicio />} />
         <Route path="alquileres" element={<Alquileres />} />
+        <Route path="alquileres/nuevo" element={<PantallaPedido />} />
+        <Route path="alquileres/:id" element={<FichaPedido />} />
+        <Route path="alquileres/:id/editar" element={<PantallaPedido />} />
         <Route path="disfraces" element={<Disfraces />} />
         <Route path="disfraces/nuevo" element={<NuevoDisfraz />} />
         <Route path="disfraces/:id" element={<FichaDisfraz />} />

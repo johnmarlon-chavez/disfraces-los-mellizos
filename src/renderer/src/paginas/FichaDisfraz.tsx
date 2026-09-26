@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { urlFoto, type DatosModelo, type EstadoFisico, type FichaModelo, type Unidad } from '../../../shared/disfraces'
+import { normalizarTalla, urlFoto, type DatosModelo, type EstadoFisico, type FichaModelo, type Unidad } from '../../../shared/disfraces'
 import { formatearSoles, leerMonto } from '../../../shared/formato'
+import type { PendienteAbierto } from '../../../shared/pedidos'
 import { llamar, mensajeDe } from '../api'
 import { VOLVER_CON_FILTROS } from '../memoriaFiltros'
 import DialogoAgregarUnidades from '../componentes/disfraces/DialogoAgregarUnidades'
+import DialogoAsignarNuevas from '../componentes/disfraces/DialogoAsignarNuevas'
 import DialogoUnidad from '../componentes/disfraces/DialogoUnidad'
 import EtiquetaEstado from '../componentes/disfraces/EtiquetaEstado'
 import SelectorRegion from '../componentes/disfraces/SelectorRegion'
@@ -30,6 +32,11 @@ export default function FichaDisfraz(): React.JSX.Element {
   const [prefijo, setPrefijo] = useState('')
   const [categorias, setCategorias] = useState<string[]>([])
   const [agregando, setAgregando] = useState(false)
+  const [asignandoNuevas, setAsignandoNuevas] = useState<{
+    talla: string
+    unidades: { id: number; codigo: string }[]
+    pendientes: PendienteAbierto[]
+  } | null>(null)
   const [unidadAbierta, setUnidadAbierta] = useState<Unidad | null>(null)
 
   const recargar = useCallback(async (): Promise<FichaModelo | null> => {
@@ -376,10 +383,31 @@ export default function FichaDisfraz(): React.JSX.Element {
         <DialogoAgregarUnidades
           modelo={ficha}
           onCerrar={() => setAgregando(false)}
-          onGuardado={async (codigos) => {
+          onGuardado={async (codigos, talla) => {
             setAgregando(false)
             avisos.exito(codigos.length === 1 ? `Unidad ${codigos[0]} agregada.` : `${codigos.length} unidades agregadas: ${codigos.join(', ')}.`)
-            await recargar()
+            const actual = await recargar()
+            // ¿Algún pedido espera este modelo y talla? Ofrecer asignar las unidades nuevas.
+            const pendientes = await llamar(window.api.pendientes.abiertos(ficha.id, talla)).catch(() => [])
+            if (actual && pendientes.length > 0) {
+              const nuevas = actual.unidades
+                .filter((u) => codigos.includes(u.codigo))
+                .map((u) => ({ id: u.id, codigo: u.codigo }))
+              setAsignandoNuevas({ talla: normalizarTalla(talla), unidades: nuevas, pendientes })
+            }
+          }}
+        />
+      )}
+
+      {asignandoNuevas && (
+        <DialogoAsignarNuevas
+          modeloNombre={ficha.nombre}
+          talla={asignandoNuevas.talla}
+          unidades={asignandoNuevas.unidades}
+          pendientes={asignandoNuevas.pendientes}
+          onCerrar={(asignadas) => {
+            setAsignandoNuevas(null)
+            if (asignadas > 0) void recargar()
           }}
         />
       )}

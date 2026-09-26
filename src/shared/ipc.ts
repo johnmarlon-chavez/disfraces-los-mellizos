@@ -18,6 +18,19 @@ import type {
   PiezaDatos,
   ResumenModelo
 } from './disfraces'
+import type {
+  BorradorPedido,
+  ConflictoUnidad,
+  FichaPedido,
+  MedioPago,
+  ModeloDisponible,
+  OpcionAdelantoAlCancelar,
+  PendienteAbierto,
+  Rango,
+  ResultadoAsignacion,
+  ResumenPedido,
+  UnidadParaPedido
+} from './pedidos'
 
 export interface InfoApp {
   nombreTienda: string
@@ -79,6 +92,40 @@ export interface CanalesIpc {
     args: [nombre: string, distrito: string, excluirId: number | null]
     resultado: ColegioParecido[]
   }
+
+  'pedidos:catalogo': { args: [rango: Rango, excluirAlquilerId: number | null]; resultado: ModeloDisponible[] }
+  'pedidos:asignar': {
+    args: [
+      pedido: {
+        modeloId: number
+        talla: string
+        cantidad: number
+        rango: Rango
+        excluirAlquilerId: number | null
+        yaEnCarrito: number[]
+      }
+    ]
+    resultado: ResultadoAsignacion
+  }
+  'pedidos:unidadesLibres': {
+    args: [modeloId: number, talla: string, rango: Rango, excluirAlquilerId: number | null, yaEnCarrito: number[]]
+    resultado: UnidadParaPedido[]
+  }
+  'pedidos:verificar': {
+    args: [unidadIds: number[], rango: Rango, excluirAlquilerId: number | null]
+    resultado: ConflictoUnidad[]
+  }
+  'pedidos:eventos': { args: []; resultado: string[] }
+  'pedidos:crear': { args: [borrador: BorradorPedido]; resultado: number }
+  'pedidos:actualizar': { args: [id: number, borrador: BorradorPedido]; resultado: void }
+  'pedidos:obtener': { args: [id: number]; resultado: FichaPedido }
+  'pedidos:listar': { args: []; resultado: ResumenPedido[] }
+  'pedidos:registrarAdelanto': { args: [id: number, monto: number, medio: MedioPago]; resultado: void }
+  'pedidos:cancelar': { args: [id: number, opcion: OpcionAdelantoAlCancelar]; resultado: void }
+
+  'pendientes:cambiarEstado': { args: [id: number, estado: 'pendiente' | 'en_confeccion']; resultado: void }
+  'pendientes:asignar': { args: [id: number, unidadIds: number[] | null]; resultado: string[] }
+  'pendientes:abiertos': { args: [modeloId: number, talla: string]; resultado: PendienteAbierto[] }
 }
 
 export type NombreCanal = keyof CanalesIpc
@@ -122,5 +169,23 @@ export interface ApiDisfraces {
     distritos: Metodo<'clientes:distritos'>
     porDocumento: Metodo<'clientes:porDocumento'>
     colegiosParecidos: Metodo<'clientes:colegiosParecidos'>
+  }
+  pedidos: {
+    catalogo: Metodo<'pedidos:catalogo'>
+    asignar: Metodo<'pedidos:asignar'>
+    unidadesLibres: Metodo<'pedidos:unidadesLibres'>
+    verificar: Metodo<'pedidos:verificar'>
+    eventos: Metodo<'pedidos:eventos'>
+    crear: Metodo<'pedidos:crear'>
+    actualizar: Metodo<'pedidos:actualizar'>
+    obtener: Metodo<'pedidos:obtener'>
+    listar: Metodo<'pedidos:listar'>
+    registrarAdelanto: Metodo<'pedidos:registrarAdelanto'>
+    cancelar: Metodo<'pedidos:cancelar'>
+  }
+  pendientes: {
+    cambiarEstado: Metodo<'pendientes:cambiarEstado'>
+    asignar: Metodo<'pendientes:asignar'>
+    abiertos: Metodo<'pendientes:abiertos'>
   }
 }

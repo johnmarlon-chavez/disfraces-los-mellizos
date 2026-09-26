@@ -4,6 +4,7 @@ import { migracion001 } from './001_esquema_inicial'
 import { migracion002 } from './002_prefijo_modelo'
 import { migracion003 } from './003_region_y_modo_mora'
 import { migracion004 } from './004_clientes_colegios'
+import { migracion005 } from './005_pedidos_y_confeccion'
 
 export interface Migracion {
   version: number
@@ -22,7 +23,13 @@ export interface Migracion {
  * - Nunca modificar una migración ya publicada; agregar una nueva al final.
  * - Nunca borrar datos existentes.
  */
-export const MIGRACIONES: readonly Migracion[] = [migracion001, migracion002, migracion003, migracion004]
+export const MIGRACIONES: readonly Migracion[] = [
+  migracion001,
+  migracion002,
+  migracion003,
+  migracion004,
+  migracion005
+]
 
 export function versionActual(db: Database.Database): number {
   return db.pragma('user_version', { simple: true }) as number

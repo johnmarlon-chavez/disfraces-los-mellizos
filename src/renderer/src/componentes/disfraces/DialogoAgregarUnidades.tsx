@@ -10,7 +10,7 @@ import SelectorTalla from './SelectorTalla'
 interface Props {
   modelo: FichaModelo
   onCerrar: () => void
-  onGuardado: (codigos: string[]) => void
+  onGuardado: (codigos: string[], talla: string) => void
 }
 
 export default function DialogoAgregarUnidades({ modelo, onCerrar, onGuardado }: Props): React.JSX.Element {
@@ -60,7 +60,7 @@ export default function DialogoAgregarUnidades({ modelo, onCerrar, onGuardado }:
           piezas: convertidas.piezas.map(({ nombre, costoReposicion }) => ({ nombre, costoReposicion }))
         })
       )
-      onGuardado(lista)
+      onGuardado(lista, talla)
     } catch (e) {
       setError(mensajeDe(e))
     } finally {

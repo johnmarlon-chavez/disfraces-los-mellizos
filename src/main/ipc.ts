@@ -5,6 +5,7 @@ import { mensajeParaUsuario } from './errores'
 import { obtenerConfiguracion } from './db/configuracion'
 import * as clientes from './db/clientes'
 import * as disfraces from './db/disfraces'
+import * as pedidos from './db/pedidos'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
 import { obtenerSesion } from './sesion'
@@ -63,4 +64,22 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('clientes:colegiosParecidos', (nombre, distrito, excluirId) =>
     clientes.buscarColegiosParecidos(db, nombre, distrito, excluirId)
   )
+
+  manejar('pedidos:catalogo', (rango, excluir) => pedidos.catalogoParaPedido(db, rango, excluir))
+  manejar('pedidos:asignar', (pedido) => pedidos.asignarUnidades(db, pedido))
+  manejar('pedidos:unidadesLibres', (modeloId, talla, rango, excluir, carrito) =>
+    pedidos.unidadesLibresParaPedido(db, modeloId, talla, rango, excluir, carrito)
+  )
+  manejar('pedidos:verificar', (ids, rango, excluir) => pedidos.verificarUnidades(db, ids, rango, excluir))
+  manejar('pedidos:eventos', () => pedidos.eventosSugeridos(db))
+  manejar('pedidos:crear', (borrador) => pedidos.crearPedido(db, borrador, obtenerSesion()))
+  manejar('pedidos:actualizar', (id, borrador) => pedidos.actualizarPedido(db, id, borrador, obtenerSesion()))
+  manejar('pedidos:obtener', (id) => pedidos.obtenerPedido(db, id))
+  manejar('pedidos:listar', () => pedidos.listarPedidos(db))
+  manejar('pedidos:registrarAdelanto', (id, monto, medio) => pedidos.registrarAdelanto(db, id, monto, medio, obtenerSesion()))
+  manejar('pedidos:cancelar', (id, opcion) => pedidos.cancelarPedido(db, id, opcion, obtenerSesion()))
+
+  manejar('pendientes:cambiarEstado', (id, estado) => pedidos.cambiarEstadoPendiente(db, id, estado, obtenerSesion()))
+  manejar('pendientes:asignar', (id, unidades) => pedidos.asignarAPendiente(db, id, unidades, obtenerSesion()))
+  manejar('pendientes:abiertos', (modeloId, talla) => pedidos.pendientesAbiertos(db, modeloId, talla))
 }

@@ -40,6 +40,7 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 - Fechas en formato dd/mm/aaaa. Zona horaria America/Lima.
 - Moneda en soles con formato `S/ 25.00`. Guardar montos como enteros en céntimos para evitar errores de redondeo.
 - **Nada se borra físicamente.** Los disfraces se dan de baja, los alquileres se cancelan, los clientes se desactivan. El historial nunca se pierde.
+  - **Única excepción (aprobada):** en una reserva todavía no entregada, quitar una unidad borra su línea de `detalle_alquiler`, y quitar un pendiente de confección sin unidades asignadas borra su fila. En ambos casos queda constancia completa en `auditoria` (`unidad_quitada_del_pedido`, `pendiente_quitado_del_pedido`: código, precios, quién y cuándo). El pedido en sí nunca se borra: se cancela.
 - Confirmación antes de cualquier acción importante (cancelar, dar de baja, registrar devolución).
 - Mensajes de error comprensibles para alguien no técnico. Ejemplo: "Este disfraz ya está reservado del 28/10 al 31/10", nunca errores técnicos de SQLite.
 - Funciona 100 % sin internet.
@@ -75,15 +76,19 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
   - grado_seccion: opcional (ej. "3.° B").
   - estado: `reservado`, `entregado`, `devuelto`, `cancelado`
   - garantia_tipo: `efectivo`, `dni`
-- **detalle_alquiler**: id, alquiler_id, unidad_id, precio_original, precio_cobrado, estado_devolucion, observaciones
+- **detalle_alquiler**: id, alquiler_id, unidad_id, precio_original, precio_cobrado, estado_devolucion, observaciones, pendiente_id
+  - pendiente_id (opcional): el pendiente de confección que cubrió esta unidad.
 - **cargos**: id, alquiler_id, unidad_id (opcional), tipo (`mora`, `dano`, `pieza_faltante`), monto, descripcion
-- **pagos**: id, alquiler_id, fecha, monto, concepto (`adelanto`, `saldo`, `garantia_recibida`, `garantia_devuelta`, `mora`, `dano`), medio (`efectivo`, `yape`, `plin`, `transferencia`, `tarjeta`)
+- **pagos**: id, alquiler_id, fecha, monto, concepto (`adelanto`, `saldo`, `garantia_recibida`, `garantia_devuelta`, `mora`, `dano`, `devolucion_adelanto`), medio (`efectivo`, `yape`, `plin`, `transferencia`, `tarjeta`)
+  - devolucion_adelanto: lo que se devuelve del adelanto al cancelar. Lo retenido (adelanto − devoluciones de un pedido cancelado) cuenta como ingreso en los reportes.
 - **usuarios**: id, nombre, usuario, contraseña (hash con bcrypt), rol (`admin`, `empleado`), activo
 - **configuracion**: mora_por_dia, modo_mora, dias_margen_lavado, precio_por_dia, carpeta_respaldo, nombre_tienda
   - modo_mora: `por_unidad` (por defecto: días de retraso × mora_por_dia por cada unidad) o `por_pedido` (días de retraso × mora_por_dia una sola vez por pedido). Editable en Configuración.
 - **auditoria**: id, fecha, usuario_id, accion, entidad, entidad_id, detalle (JSON). Registra cambios de precio, de estado, bajas, etc.
-- **pendientes_confeccion**: id, alquiler_id, modelo_id, talla, cantidad, fecha_limite, estado, observaciones
-  - estado: `pendiente`, `en_confeccion`, `listo`
+- **pendientes_confeccion**: id, alquiler_id, modelo_id, talla, cantidad, cantidad_asignada, precio_original, precio_cobrado, fecha_limite, estado, observaciones
+  - estado: `pendiente`, `en_confeccion`, `listo`. `listo` solo cuando cantidad_asignada = cantidad (se marca solo al asignar la última unidad).
+  - precio_original/precio_cobrado: por unidad, copiados al registrar el pendiente (igual que en detalle_alquiler).
+  - fecha_limite: por defecto 2 días antes de la salida, editable; entre hoy y la salida, nunca después.
 
 ## Reglas de negocio
 
@@ -95,11 +100,20 @@ Una unidad NO está disponible para el rango [inicio, fin] si:
 
 La validación se hace en el proceso main, dentro de una transacción, justo antes de guardar. Nunca confiar solo en la validación de la interfaz.
 
+Precisiones (implementadas en `src/main/logica/disponibilidad.ts`, con prueba aleatoria contra una versión día por día):
+- Fechas inclusivas. Con margen 1, un traje que vuelve el 31/10 está ocupado hasta el 01/11. Con margen 0, el mismo día de la devolución todavía choca.
+- **Alquiler entregado y vencido** (no ha vuelto): se cuenta ocupado hasta la fecha más tarde entre la pactada y hoy, más el margen.
+- `lavanderia` no bloquea (el traje volverá limpio); se puede asignar aunque el pedido salga hoy, con aviso.
+- Al editar un pedido, sus propias unidades no chocan consigo mismas.
+- Las escrituras de pedidos usan transacciones `IMMEDIATE`.
+
 ### Flujos
 1. **Reservar (pedido)**: elegir cliente (o crearlo en la misma pantalla) → elegir fechas → ir agregando disfraces al pedido (buscar modelo + talla, mostrando solo unidades libres en esas fechas) → registrar adelanto.
-   - **Agregar por cantidad:** además de uno por uno, se puede agregar modelo + talla + cantidad (ej. "Huaylas talla 10 × 8"). El sistema asigna solo unidades libres en esas fechas y deja cambiar alguna a mano.
+   - **Agregar por cantidad:** además de uno por uno, se puede agregar modelo + talla + cantidad (ej. "Huaylas talla 10 × 8"). El sistema asigna solo unidades libres en esas fechas y deja cambiar alguna a mano. Preferencia: primero las `disponible`, luego las de lavandería; dentro de cada grupo, por código.
+   - **Evento** obligatorio, con sugerencias (Día de la Madre, Fiestas Patrias, Aniversario del colegio, Primavera, Clausura, los ya usados y "Otro").
    - **Si no alcanzan:** decirlo claro ("Hay 5 libres, faltan 3") y ofrecer registrar las que faltan como **pendientes de confección** con fecha límite. El pedido se guarda igual.
-   - Cuando las unidades nuevas estén listas, se agregan desde Disfraces y se asignan al pedido.
+   - Cuando las unidades nuevas estén listas, se agregan desde Disfraces y se asignan al pedido (al agregarlas, el sistema ofrece asignarlas a los pedidos que esperan ese modelo y talla; también desde la ficha del pedido con "Asignar unidades listas").
+   - **Cancelar** (solo reservas): el sistema pregunta qué hacer con el adelanto: devolver todo, devolver una parte (indicando el monto) o retenerlo.
 
 ### Cálculo del monto del pedido
 La pantalla del pedido funciona como un carrito: cada vez que se agrega o quita un disfraz, los montos se recalculan al instante y se muestran siempre visibles:
@@ -112,7 +126,7 @@ La pantalla del pedido funciona como un carrito: cada vez que se agrega o quita 
 ### Edición de precios
 - El precio de cada disfraz se edita desde su ficha en la pantalla Disfraces, en cualquier momento, con un campo simple y visible. Tanto la dueña como la trabajadora pueden cambiarlo.
 - El cambio aplica a los pedidos nuevos. El precio de cada disfraz se copia al pedido al momento de agregarlo, así que los pedidos anteriores conservan el precio con el que se hicieron.
-- Dentro de un pedido, se puede ajustar el precio de un disfraz solo para ese pedido (por ejemplo, un descuento), sin tocar el precio general. El sistema guarda el precio original y el precio cobrado, para que la dueña vea en los reportes qué pedidos tuvieron descuento. En pedidos grandes, opción **"Aplicar este precio a todos los del pedido"** (del mismo modelo) para no cambiarlos uno por uno. Si se confirma que el precio es por día, el precio de cada disfraz se multiplica por la cantidad de días del alquiler.
+- Dentro de un pedido, se puede ajustar el precio de un disfraz solo para ese pedido (por ejemplo, un descuento), sin tocar el precio general. El sistema guarda el precio original y el precio cobrado, para que la dueña vea en los reportes qué pedidos tuvieron descuento. En pedidos grandes, opción **"Aplicar este precio a todos los del pedido"** (del mismo modelo) para no cambiarlos uno por uno. Si se confirma que el precio es por día, el precio de cada disfraz se multiplica por la cantidad de días del alquiler: la diferencia entre la fecha de devolución y la de salida, mínimo 1. Si cambian las fechas, los precios ya copiados se reajustan en proporción a los días.
 2. **Entregar**: cobrar saldo → registrar garantía (efectivo o DNI en prenda) → estado `entregado`.
    - No se puede entregar un pedido con pendientes de confección sin resolver, salvo que **la dueña** confirme entregar lo disponible.
 3. **Devolver**: revisar cada unidad con checklist de sus piezas → calcular mora = días de retraso × mora_por_dia → registrar daños y piezas faltantes → descontar todo de la garantía → mostrar claramente cuánto se le devuelve al cliente o cuánto falta cobrar → unidades pasan a `lavanderia`.
@@ -198,11 +212,13 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - better-sqlite3 está compilado para Electron, por eso Vitest corre con el binario de Electron (`ELECTRON_RUN_AS_NODE=1`) mediante `scripts/con-electron.mjs`.
 - La terminal de VS Code define `ELECTRON_RUN_AS_NODE=1`; los scripts `dev`, `start`, `seed` y las pruebas E2E lo quitan para que Electron abra ventanas.
 - `DISFRACES_DATOS_DIR` cambia la carpeta de datos (lo usan las pruebas E2E).
+- Electron arranca con `--lang=es-PE` (Chromium lo sirve como `es-419`) para que los campos de fecha muestren dd/mm/aaaa.
+- En layouts de dos columnas usar `grid-cols-[minmax(0,1fr)_…]`, no `1fr`: con `1fr` el contenido largo desborda a 1366×768.
 
 ### Estructura
 - `src/shared/` — contrato IPC tipado (`ipc.ts`), formatos de soles/fechas y reglas compartidas de disfraces (`disfraces.ts`: `TALLAS`, `normalizarTalla`, `compararTallas`/`ordenarTallas`, `filtrarModelos`); lo usan main, preload y renderer. Ordenar tallas siempre con `compararTallas`, nunca con orden alfabético.
 - `src/main/` — proceso main:
-  - `logica/` — reglas de negocio puras, sin base de datos (prefijos, códigos, transiciones de estado, validaciones).
+  - `logica/` — reglas de negocio puras, sin base de datos: `disponibilidad.ts` (la regla de disponibilidad y la asignación por cantidad), `pedidos.ts`, `clientes.ts`, `disfraces.ts`.
   - `db/` — conexión, migraciones y acceso a datos; cada escritura en una transacción con su registro en `auditoria`.
   - `ipc.ts` (handlers), `errores.ts` (`ErrorDeNegocio` = mensaje para la usuaria).
   - `sesion.ts` — cuenta actual y `exigirDuena()`. **Fase 7:** hoy la sesión es `null` y se permite todo; al agregar el login, dar de baja y reactivar quedarán solo para la dueña sin cambiar nada más.

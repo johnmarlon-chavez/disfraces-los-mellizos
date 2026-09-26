@@ -50,14 +50,14 @@ export default function EditorPiezas({ filas, onCambio }: Props): React.JSX.Elem
       <legend className="mb-1 font-semibold">Piezas</legend>
       {filas.length === 0 && <p className="text-slate-600">Sin piezas registradas.</p>}
       {filas.length > 0 && (
-        <div className="grid grid-cols-[1fr_9rem_auto] items-center gap-2 text-base font-semibold text-slate-700">
+        <div className="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-2 text-base font-semibold text-slate-700">
           <span id={`${id}-n`}>Nombre de la pieza</span>
           <span id={`${id}-c`}>Costo si se pierde</span>
           <span />
         </div>
       )}
       {filas.map((f) => (
-        <div key={f.clave} className="grid grid-cols-[1fr_9rem_auto] items-center gap-2">
+        <div key={f.clave} className="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-2">
           <input
             value={f.nombre}
             onChange={(e) => cambiar(f.clave, 'nombre', e.target.value)}

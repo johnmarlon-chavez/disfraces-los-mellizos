@@ -39,6 +39,24 @@ const api: ApiDisfraces = {
     distritos: canal('clientes:distritos'),
     porDocumento: canal('clientes:porDocumento'),
     colegiosParecidos: canal('clientes:colegiosParecidos')
+  },
+  pedidos: {
+    catalogo: canal('pedidos:catalogo'),
+    asignar: canal('pedidos:asignar'),
+    unidadesLibres: canal('pedidos:unidadesLibres'),
+    verificar: canal('pedidos:verificar'),
+    eventos: canal('pedidos:eventos'),
+    crear: canal('pedidos:crear'),
+    actualizar: canal('pedidos:actualizar'),
+    obtener: canal('pedidos:obtener'),
+    listar: canal('pedidos:listar'),
+    registrarAdelanto: canal('pedidos:registrarAdelanto'),
+    cancelar: canal('pedidos:cancelar')
+  },
+  pendientes: {
+    cambiarEstado: canal('pendientes:cambiarEstado'),
+    asignar: canal('pendientes:asignar'),
+    abiertos: canal('pendientes:abiertos')
   }
 }
 

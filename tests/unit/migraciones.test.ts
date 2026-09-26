@@ -221,6 +221,29 @@ describe('aplicarMigraciones', () => {
     ).toThrow(/FOREIGN KEY/)
   })
 
+  it('la migración 005 conserva los pagos y acepta devolucion_adelanto', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    aplicarMigraciones(db, MIGRACIONES.slice(0, 4))
+    db.exec(`
+      INSERT INTO clientes (id, tipo_documento, numero_documento, nombres) VALUES (1, 'dni', '40123456', 'María');
+      INSERT INTO alquileres (id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada)
+        VALUES (5, 1, '2026-10-01', '2026-10-05', '2026-10-07');
+      INSERT INTO pagos (id, alquiler_id, monto, concepto, medio) VALUES (9, 5, 3000, 'adelanto', 'yape');
+    `)
+    expect(() =>
+      db.prepare("INSERT INTO pagos (alquiler_id, monto, concepto, medio) VALUES (5, 100, 'devolucion_adelanto', 'yape')").run()
+    ).toThrow(/CHECK/)
+    aplicarMigraciones(db)
+    expect(db.prepare('SELECT id, alquiler_id, monto, concepto, medio FROM pagos').all()).toEqual([
+      { id: 9, alquiler_id: 5, monto: 3000, concepto: 'adelanto', medio: 'yape' }
+    ])
+    expect(db.prepare('SELECT evento, grado_seccion FROM alquileres').get()).toEqual({ evento: '', grado_seccion: '' })
+    db.prepare("INSERT INTO pagos (alquiler_id, monto, concepto, medio) VALUES (5, 100, 'devolucion_adelanto', 'yape')").run()
+    expect(db.pragma('foreign_key_check')).toEqual([])
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
+  })
+
   it('avisa con un mensaje claro si la base es de una versión más nueva del programa', () => {
     const db = new Database(':memory:')
     db.pragma(`user_version = ${MIGRACIONES.length + 1}`)

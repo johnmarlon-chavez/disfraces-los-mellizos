@@ -47,6 +47,7 @@ describe('esquema inicial', () => {
         'detalle_alquiler',
         'modelos',
         'pagos',
+        'pendientes_confeccion',
         'piezas',
         'unidades',
         'usuarios'

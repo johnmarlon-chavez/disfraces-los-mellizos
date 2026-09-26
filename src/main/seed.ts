@@ -7,7 +7,10 @@ import { basename, join } from 'node:path'
 import { app } from 'electron'
 import type Database from 'better-sqlite3'
 import type { Region } from '../shared/disfraces'
+import { sumarDias } from '../shared/fechas'
+import { hoyEnLima } from '../shared/formato'
 import { abrirBaseDeDatos } from './db/conexion'
+import { asignarUnidades, crearPedido } from './db/pedidos'
 import { obtenerRutas } from './rutas'
 
 interface ModeloSemilla {
@@ -241,6 +244,77 @@ function sembrar(db: Database.Database): void {
     for (const p of PERSONAS) insPersona.run(...p)
     for (const c of COLEGIOS) insColegio.run(...c)
   })()
+  sembrarPedidos(db)
+}
+
+/** Dos reservas de ejemplo, con fechas relativas a hoy, creadas con la lógica real de pedidos. */
+function sembrarPedidos(db: Database.Database): void {
+  const hoy = hoyEnLima()
+  const idCliente = (nombre: string): number =>
+    (db.prepare('SELECT id FROM clientes WHERE nombres = ?').get(nombre) as { id: number }).id
+  const idModelo = (prefijo: string): number =>
+    (db.prepare('SELECT id FROM modelos WHERE prefijo = ?').get(prefijo) as { id: number }).id
+
+  // Colegio: 10 Huaylas mujer talla 10 (hay 8) -> 2 por confeccionar
+  const rangoColegio = { inicio: sumarDias(hoy, 12), fin: sumarDias(hoy, 14) }
+  const huaylas = asignarUnidades(
+    db,
+    { modeloId: idModelo('HUM'), talla: '10', cantidad: 10, rango: rangoColegio, excluirAlquilerId: null, yaEnCarrito: [] },
+    hoy
+  )
+  crearPedido(
+    db,
+    {
+      clienteId: idCliente('I.E. Los Girasoles'),
+      fechaSalida: rangoColegio.inicio,
+      fechaDevolucionPactada: rangoColegio.fin,
+      evento: 'Aniversario del colegio',
+      gradoSeccion: '4.° A',
+      observaciones: '',
+      garantiaTipo: 'dni',
+      garantiaMonto: 0,
+      lineas: huaylas.asignadas.map((u) => ({ unidadId: u.unidadId, precioCobrado: 4000 })),
+      pendientes: [
+        {
+          modeloId: idModelo('HUM'),
+          talla: '10',
+          cantidad: huaylas.faltan,
+          fechaLimite: sumarDias(hoy, 5),
+          precioCobrado: 4000,
+          observaciones: ''
+        }
+      ],
+      adelanto: { monto: 20000, medio: 'transferencia' }
+    },
+    null,
+    hoy
+  )
+
+  // Persona: un Pirata para una actuación
+  const rangoPersona = { inicio: sumarDias(hoy, 3), fin: sumarDias(hoy, 4) }
+  const pirata = asignarUnidades(
+    db,
+    { modeloId: idModelo('PIR'), talla: 'M', cantidad: 1, rango: rangoPersona, excluirAlquilerId: null, yaEnCarrito: [] },
+    hoy
+  )
+  crearPedido(
+    db,
+    {
+      clienteId: idCliente('María Quispe Huamán'),
+      fechaSalida: rangoPersona.inicio,
+      fechaDevolucionPactada: rangoPersona.fin,
+      evento: 'Otro',
+      gradoSeccion: '',
+      observaciones: 'Actuación de fin de bimestre',
+      garantiaTipo: 'efectivo',
+      garantiaMonto: 5000,
+      lineas: pirata.asignadas.map((u) => ({ unidadId: u.unidadId, precioCobrado: u.precioSugerido })),
+      pendientes: [],
+      adelanto: { monto: 1500, medio: 'yape' }
+    },
+    null,
+    hoy
+  )
 }
 
 /** Guarda la base actual con otro nombre (no la borra) para empezar de cero. */

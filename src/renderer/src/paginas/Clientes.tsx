@@ -46,7 +46,7 @@ function ListaClientes(): React.JSX.Element {
         </Link>
       </div>
 
-      <div className="mb-6 grid grid-cols-[1fr_13rem] items-end gap-4 rounded-lg bg-white p-4 shadow">
+      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_13rem] items-end gap-4 rounded-lg bg-white p-4 shadow">
         <CampoTexto
           etiqueta="Buscar"
           valor={filtro.texto}

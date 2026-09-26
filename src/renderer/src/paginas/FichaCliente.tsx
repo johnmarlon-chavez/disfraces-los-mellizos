@@ -6,16 +6,11 @@ import { llamar, mensajeDe } from '../api'
 import EtiquetaTipoCliente from '../componentes/clientes/EtiquetaTipoCliente'
 import FormularioCliente from '../componentes/clientes/FormularioCliente'
 import { useAvisos } from '../componentes/ui/Avisos'
-import Boton from '../componentes/ui/Boton'
+import Boton, { clasesBoton } from '../componentes/ui/Boton'
+import EtiquetaEstadoPedido from '../componentes/pedidos/EtiquetaEstadoPedido'
 import { useConfirmar } from '../componentes/ui/Confirmacion'
 import { VOLVER_CON_FILTROS } from '../memoriaFiltros'
 
-const NOMBRE_ESTADO_ALQUILER = {
-  reservado: 'Reservado',
-  entregado: 'Entregado',
-  devuelto: 'Devuelto',
-  cancelado: 'Cancelado'
-}
 
 function datosDe(f: DatosFicha): DatosCliente {
   const comunes = {
@@ -147,7 +142,7 @@ export default function FichaCliente(): React.JSX.Element {
         </p>
       )}
 
-      <div className="grid grid-cols-[1fr_20rem] items-start gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_20rem] items-start gap-6">
         <div className="rounded-lg bg-white p-5 shadow">
           <h2 className="mb-4 text-2xl font-bold">Datos</h2>
           <FormularioCliente
@@ -184,13 +179,21 @@ export default function FichaCliente(): React.JSX.Element {
       </div>
 
       <div className="rounded-lg bg-white p-5 shadow">
-        <h2 className="mb-4 text-2xl font-bold">Alquileres</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Alquileres</h2>
+          {ficha.activo && (
+            <Link to="/alquileres/nuevo" state={{ clienteId: ficha.id }} className={clasesBoton('primario')}>
+              + Nuevo pedido para este cliente
+            </Link>
+          )}
+        </div>
         {ficha.alquileres.length === 0 ? (
           <p className="text-lg text-slate-700">Todavía no tiene alquileres.</p>
         ) : (
           <table className="w-full text-left text-lg">
             <thead>
               <tr className="border-b-2 border-slate-300">
+                <th className="py-2 pr-3">Pedido</th>
                 <th className="py-2 pr-3">Salida</th>
                 <th className="py-2 pr-3">Devolución pactada</th>
                 <th className="py-2 pr-3">Devuelto</th>
@@ -201,11 +204,18 @@ export default function FichaCliente(): React.JSX.Element {
             <tbody>
               {ficha.alquileres.map((a) => (
                 <tr key={a.id} className="border-b border-slate-200">
+                  <td className="py-2 pr-3">
+                    <Link to={`/alquileres/${a.id}`} className="font-semibold text-blue-800 hover:underline">
+                      N.° {a.id}
+                    </Link>
+                  </td>
                   <td className="py-2 pr-3">{formatearFecha(a.fechaSalida)}</td>
                   <td className="py-2 pr-3">{formatearFecha(a.fechaDevolucionPactada)}</td>
                   <td className="py-2 pr-3">{a.fechaDevolucionReal ? formatearFecha(a.fechaDevolucionReal) : '—'}</td>
                   <td className="py-2 pr-3">{a.unidades}</td>
-                  <td className="py-2">{NOMBRE_ESTADO_ALQUILER[a.estado]}</td>
+                  <td className="py-2">
+                    <EtiquetaEstadoPedido estado={a.estado} />
+                  </td>
                 </tr>
               ))}
             </tbody>
