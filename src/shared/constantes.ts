@@ -1,1 +1,1 @@
-export const NOMBRE_TIENDA = 'Disfraces Los Mellizos'
+export const NOMBRE_TIENDA = 'Librería AB'

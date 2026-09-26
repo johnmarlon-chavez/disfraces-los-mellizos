@@ -1,6 +1,6 @@
 # Sistema de Alquiler de Disfraces
 
-Nombre de la tienda: "Disfraces Los Mellizos". Usarlo en el título de la ventana, la pantalla de login y el instalador.
+Nombre de la tienda: "Librería AB". Usarlo en el título de la ventana, la pantalla de login y el instalador.
 
 Aplicación de escritorio para Windows que controla el inventario y los alquileres de una tienda de disfraces. La usará la dueña del negocio, que **no es usuaria técnica**. Todo debe ser simple, claro y a prueba de errores.
 

@@ -14,7 +14,7 @@ test.afterAll(async () => {
 })
 
 test('abre con el nombre de la tienda y crea la base de datos', async () => {
-  await expect(a.ventana).toHaveTitle('Disfraces Los Mellizos')
+  await expect(a.ventana).toHaveTitle('Librería AB')
   await expect(a.ventana.getByRole('heading', { name: 'Inicio' })).toBeVisible()
   expect(existsSync(join(a.carpetaDatos, 'datos.db'))).toBe(true)
   expect(existsSync(join(a.carpetaDatos, 'fotos'))).toBe(true)
