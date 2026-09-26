@@ -107,6 +107,16 @@ function ListaPedidos(): React.JSX.Element {
                   <span className="text-lg font-semibold">
                     {p.unidades} {p.unidades === 1 ? 'disfraz' : 'disfraces'} · {formatearSoles(p.total)}
                   </span>
+                  {p.estado === 'entregado' && p.fuera > 0 && (
+                    <span className="text-base font-semibold text-purple-900">
+                      Faltan {p.fuera} de {p.unidades} por devolver
+                    </span>
+                  )}
+                  {p.debe > 0 && (
+                    <span className="rounded-full border-2 border-red-700 bg-red-50 px-3 text-base font-semibold text-red-800">
+                      Debe {formatearSoles(p.debe)}
+                    </span>
+                  )}
                   {p.porConfeccionar > 0 && (
                     <span className="rounded-full border-2 border-amber-600 bg-amber-50 px-3 text-base font-semibold text-amber-900">
                       {p.porConfeccionar} por confeccionar

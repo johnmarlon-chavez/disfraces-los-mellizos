@@ -1,6 +1,7 @@
 // Tipos de pedidos (alquileres) compartidos por main y renderer. Montos en céntimos.
 import type { TipoCliente } from './clientes'
 import type { EstadoFisico, Region } from './disfraces'
+import type { CargoPedido, CuentaPedido } from './entregas'
 import { diasEntre, sumarDias } from './fechas'
 
 export type EstadoPedido = 'reservado' | 'entregado' | 'devuelto' | 'cancelado'
@@ -167,6 +168,11 @@ export interface LineaPedido {
   precioOriginal: number
   precioCobrado: number
   pendienteId: number | null
+  fechaEntregaReal: string | null
+  fechaDevolucionReal: string | null
+  estadoDevolucion: 'bien' | 'con_danos' | 'con_faltantes' | 'con_danos_y_faltantes' | null
+  /** Piezas de la unidad, para el checklist de devolución. */
+  piezas: { id: number; nombre: string; costoReposicion: number }[]
 }
 
 export interface PendientePedido {
@@ -189,6 +195,8 @@ export interface PagoPedido {
   monto: number
   concepto: ConceptoPago
   medio: MedioPago
+  /** Tomado de la garantía en efectivo al liquidar. */
+  desdeGarantia: boolean
 }
 
 export interface TotalesPedido {
@@ -196,6 +204,7 @@ export interface TotalesPedido {
   total: number
   /** Adelantos pagados menos devoluciones de adelanto. */
   adelantoNeto: number
+  /** Lo que falta pagar del alquiler (total − adelantos − pagos de saldo). */
   saldo: number
 }
 
@@ -215,6 +224,10 @@ export interface FichaPedido {
   pendientes: PendientePedido[]
   pagos: PagoPedido[]
   totales: TotalesPedido
+  entregadoEn: string | null
+  fechaDevolucionReal: string | null
+  cargos: CargoPedido[]
+  cuenta: CuentaPedido
 }
 
 export interface ResumenPedido {
@@ -232,6 +245,10 @@ export interface ResumenPedido {
   porConfeccionar: number
   total: number
   codigos: string[]
+  /** Unidades que salieron y no han vuelto. */
+  fuera: number
+  /** Deuda pendiente de un pedido ya cerrado. */
+  debe: number
 }
 
 export interface PendienteAbierto {

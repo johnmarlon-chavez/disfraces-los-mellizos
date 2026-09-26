@@ -30,7 +30,7 @@ import {
   validarRegion,
   validarTalla
 } from '../logica/disfraces'
-import { exigirDuena, type Sesion } from '../sesion'
+import { exigirDuena, type AutorizacionDuena, type Sesion } from '../sesion'
 import { registrarAuditoria } from './auditoria'
 
 type Db = Database.Database
@@ -61,7 +61,8 @@ interface FilaUnidad {
 const SQL_UNIDADES = `
   SELECT u.id, u.modelo_id, u.codigo, u.talla, u.estado_fisico, u.observaciones,
          EXISTS (SELECT 1 FROM detalle_alquiler d JOIN alquileres a ON a.id = d.alquiler_id
-                 WHERE d.unidad_id = u.id AND a.estado = 'entregado') AS alquilada
+                 WHERE d.unidad_id = u.id AND a.estado = 'entregado'
+                   AND d.fecha_entrega_real IS NOT NULL AND d.fecha_devolucion_real IS NULL) AS alquilada
   FROM unidades u`
 
 function filaModelo(db: Db, id: number): FilaModelo {
@@ -95,13 +96,16 @@ function alquilerPendiente(db: Db, unidadIds: number[]): AlquilerPendiente | und
   if (unidadIds.length === 0) return undefined
   return db
     .prepare(
-      `SELECT u.codigo, a.estado, a.fecha_salida, a.fecha_devolucion_pactada
+      `SELECT u.codigo,
+              CASE WHEN d.fecha_entrega_real IS NOT NULL THEN 'entregado' ELSE 'reservado' END AS estado,
+              a.fecha_salida, a.fecha_devolucion_pactada
        FROM detalle_alquiler d
        JOIN alquileres a ON a.id = d.alquiler_id
        JOIN unidades u ON u.id = d.unidad_id
        WHERE d.unidad_id IN (${unidadIds.map(() => '?').join(',')})
          AND a.estado IN ('reservado', 'entregado')
-       ORDER BY a.estado = 'entregado' DESC, a.fecha_salida
+         AND d.fecha_devolucion_real IS NULL
+       ORDER BY estado = 'entregado' DESC, a.fecha_salida
        LIMIT 1`
     )
     .get(...unidadIds) as AlquilerPendiente | undefined
@@ -305,8 +309,13 @@ export function cambiarPrecio(db: Db, id: number, precio: number, sesion: Sesion
   })()
 }
 
-export function darDeBajaModelo(db: Db, id: number, sesion: Sesion | null): void {
-  exigirDuena(sesion, 'dar de baja un disfraz')
+export function darDeBajaModelo(
+  db: Db,
+  id: number,
+  sesion: Sesion | null,
+  autorizacion: AutorizacionDuena | null = null
+): void {
+  exigirDuena(sesion, 'dar de baja un disfraz', autorizacion)
   db.transaction(() => {
     const m = filaModelo(db, id)
     if (m.activo === 0) throw new ErrorDeNegocio(`"${m.nombre}" ya está dado de baja.`)
@@ -324,8 +333,13 @@ export function darDeBajaModelo(db: Db, id: number, sesion: Sesion | null): void
   })()
 }
 
-export function reactivarModelo(db: Db, id: number, sesion: Sesion | null): void {
-  exigirDuena(sesion, 'reactivar un disfraz')
+export function reactivarModelo(
+  db: Db,
+  id: number,
+  sesion: Sesion | null,
+  autorizacion: AutorizacionDuena | null = null
+): void {
+  exigirDuena(sesion, 'reactivar un disfraz', autorizacion)
   db.transaction(() => {
     const m = filaModelo(db, id)
     if (m.activo === 1) throw new ErrorDeNegocio(`"${m.nombre}" ya está activo.`)
@@ -406,12 +420,18 @@ export function actualizarUnidad(db: Db, id: number, datos: DatosUnidad, sesion:
   })()
 }
 
-export function cambiarEstadoUnidad(db: Db, id: number, nuevo: EstadoFisico, sesion: Sesion | null): void {
+export function cambiarEstadoUnidad(
+  db: Db,
+  id: number,
+  nuevo: EstadoFisico,
+  sesion: Sesion | null,
+  autorizacion: AutorizacionDuena | null = null
+): void {
   db.transaction(() => {
     const u = filaUnidad(db, id)
     validarCambioEstado(u.codigo, u.estado_fisico, nuevo)
     if (cambioRequiereDuena(u.estado_fisico, nuevo)) {
-      exigirDuena(sesion, nuevo === 'baja' ? 'dar de baja una unidad' : 'reactivar una unidad')
+      exigirDuena(sesion, nuevo === 'baja' ? 'dar de baja una unidad' : 'reactivar una unidad', autorizacion)
     }
 
     const pendiente = alquilerPendiente(db, [id])

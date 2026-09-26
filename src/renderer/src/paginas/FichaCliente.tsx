@@ -138,7 +138,7 @@ export default function FichaCliente(): React.JSX.Element {
 
       {ficha.conAntecedentes && (
         <p role="note" className="rounded-lg border-2 border-amber-600 bg-amber-50 p-4 text-lg font-semibold text-amber-900">
-          Este cliente tiene antecedentes: devoluciones tardías o cargos por daños. Revise el historial antes de alquilarle.
+          Este cliente tiene antecedentes: devoluciones tardías, cargos por daños o deudas. Revise el historial antes de alquilarle.
         </p>
       )}
 
@@ -175,6 +175,9 @@ export default function FichaCliente(): React.JSX.Element {
             }
             alerta={historial.cargosPorDanos > 0}
           />
+          {historial.deudaPendiente > 0 && (
+            <Indicador valor={formatearSoles(historial.deudaPendiente)} texto="debe de pedidos anteriores" alerta />
+          )}
         </div>
       </div>
 

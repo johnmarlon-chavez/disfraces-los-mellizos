@@ -1,6 +1,15 @@
 // Contrato tipado entre el renderer y el proceso main.
 // Cada canal declara sus argumentos y su resultado; el preload y los handlers
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
+import type { AutorizacionDuena } from './autorizacion'
+import type {
+  DatosDevolucion,
+  DatosEntrega,
+  DatosLiquidacion,
+  PrevisualizacionDevolucion,
+  ResultadoDevolucion,
+  ResultadoEntrega
+} from './entregas'
 import type {
   ColegioParecido,
   DatosCliente,
@@ -66,8 +75,8 @@ export interface CanalesIpc {
   'modelos:cambiarPrefijo': { args: [id: number, prefijo: string]; resultado: void }
   'modelos:actualizar': { args: [id: number, datos: DatosModelo]; resultado: void }
   'modelos:cambiarPrecio': { args: [id: number, precio: number]; resultado: void }
-  'modelos:darDeBaja': { args: [id: number]; resultado: void }
-  'modelos:reactivar': { args: [id: number]; resultado: void }
+  'modelos:darDeBaja': { args: [id: number, autorizacion: AutorizacionDuena | null]; resultado: void }
+  'modelos:reactivar': { args: [id: number, autorizacion: AutorizacionDuena | null]; resultado: void }
   'modelos:elegirFoto': { args: [id: number]; resultado: boolean }
   'modelos:quitarFoto': { args: [id: number]; resultado: void }
 
@@ -75,7 +84,10 @@ export interface CanalesIpc {
   'unidades:piezasSugeridas': { args: [modeloId: number]; resultado: PiezaDatos[] }
   'unidades:crear': { args: [datos: NuevasUnidades]; resultado: void }
   'unidades:actualizar': { args: [id: number, datos: DatosUnidad]; resultado: void }
-  'unidades:cambiarEstado': { args: [id: number, estado: EstadoFisico]; resultado: void }
+  'unidades:cambiarEstado': {
+    args: [id: number, estado: EstadoFisico, autorizacion: AutorizacionDuena | null]
+    resultado: void
+  }
 
   'clientes:listar': { args: []; resultado: ResumenCliente[] }
   'clientes:obtener': { args: [id: number]; resultado: FichaCliente }
@@ -126,6 +138,22 @@ export interface CanalesIpc {
   'pendientes:cambiarEstado': { args: [id: number, estado: 'pendiente' | 'en_confeccion']; resultado: void }
   'pendientes:asignar': { args: [id: number, unidadIds: number[] | null]; resultado: string[] }
   'pendientes:abiertos': { args: [modeloId: number, talla: string]; resultado: PendienteAbierto[] }
+
+  'entregas:entregar': {
+    args: [id: number, datos: DatosEntrega, autorizacion: AutorizacionDuena | null]
+    resultado: ResultadoEntrega
+  }
+  'entregas:previsualizar': { args: [id: number, datos: DatosDevolucion]; resultado: PrevisualizacionDevolucion }
+  'entregas:devolver': { args: [id: number, datos: DatosDevolucion]; resultado: ResultadoDevolucion }
+  'entregas:liquidar': { args: [id: number, datos: DatosLiquidacion]; resultado: void }
+  'entregas:pagarDeuda': { args: [id: number, monto: number, medio: MedioPago]; resultado: void }
+  'entregas:devolverDocumento': { args: [id: number]; resultado: void }
+  'entregas:rebajarMora': {
+    args: [cargoId: number, nuevoMonto: number, motivo: string, autorizacion: AutorizacionDuena | null]
+    resultado: void
+  }
+  'entregas:cancelarLoQueFalta': { args: [id: number, autorizacion: AutorizacionDuena | null]; resultado: void }
+  'entregas:liberar': { args: [id: number]; resultado: string[] }
 }
 
 export type NombreCanal = keyof CanalesIpc
@@ -187,5 +215,16 @@ export interface ApiDisfraces {
     cambiarEstado: Metodo<'pendientes:cambiarEstado'>
     asignar: Metodo<'pendientes:asignar'>
     abiertos: Metodo<'pendientes:abiertos'>
+  }
+  entregas: {
+    entregar: Metodo<'entregas:entregar'>
+    previsualizar: Metodo<'entregas:previsualizar'>
+    devolver: Metodo<'entregas:devolver'>
+    liquidar: Metodo<'entregas:liquidar'>
+    pagarDeuda: Metodo<'entregas:pagarDeuda'>
+    devolverDocumento: Metodo<'entregas:devolverDocumento'>
+    rebajarMora: Metodo<'entregas:rebajarMora'>
+    cancelarLoQueFalta: Metodo<'entregas:cancelarLoQueFalta'>
+    liberar: Metodo<'entregas:liberar'>
   }
 }

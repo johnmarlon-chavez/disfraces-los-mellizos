@@ -80,6 +80,8 @@ export interface HistorialCliente {
   /** Cargos por daños o piezas faltantes. */
   cargosPorDanos: number
   montoCargosPorDanos: number
+  /** Lo que quedó debiendo en pedidos ya devueltos. */
+  deudaPendiente: number
 }
 
 export interface AlquilerDeCliente {
@@ -108,7 +110,7 @@ export interface ColegioParecido {
 }
 
 export function tieneAntecedentes(h: HistorialCliente): boolean {
-  return h.devolucionesTardias > 0 || h.cargosPorDanos > 0
+  return h.devolucionesTardias > 0 || h.cargosPorDanos > 0 || h.deudaPendiente > 0
 }
 
 /** Solo dígitos, sin +51 inicial: "+51 987-654-321" -> "987654321". */

@@ -57,6 +57,17 @@ const api: ApiDisfraces = {
     cambiarEstado: canal('pendientes:cambiarEstado'),
     asignar: canal('pendientes:asignar'),
     abiertos: canal('pendientes:abiertos')
+  },
+  entregas: {
+    entregar: canal('entregas:entregar'),
+    previsualizar: canal('entregas:previsualizar'),
+    devolver: canal('entregas:devolver'),
+    liquidar: canal('entregas:liquidar'),
+    pagarDeuda: canal('entregas:pagarDeuda'),
+    devolverDocumento: canal('entregas:devolverDocumento'),
+    rebajarMora: canal('entregas:rebajarMora'),
+    cancelarLoQueFalta: canal('entregas:cancelarLoQueFalta'),
+    liberar: canal('entregas:liberar')
   }
 }
 

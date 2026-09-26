@@ -46,22 +46,25 @@ import {
   validarTallaPedido
 } from '../logica/pedidos'
 import type { Sesion } from '../sesion'
+import type { CargoPedido } from '../../shared/entregas'
+import { calcularDeuda, planLiquidacion } from '../logica/liquidacion'
 import { registrarAuditoria } from './auditoria'
 import { obtenerFichaCliente } from './clientes'
+import { estadoCuenta } from './cuentas'
 import { obtenerConfiguracion } from './configuracion'
 
 type Db = Database.Database
 
 // ---------- Lectura de unidades con sus ocupaciones ----------
 
-interface UnidadDePedido extends UnidadConOcupaciones {
+export interface UnidadDePedido extends UnidadConOcupaciones {
   modeloNombre: string
   modeloActivo: boolean
   precioModelo: number
 }
 
 /** Unidades (con el modelo y todos sus alquileres reservados o entregados), filtradas por SQL opcional. */
-function leerUnidades(db: Db, where: string, params: unknown[]): UnidadDePedido[] {
+export function leerUnidades(db: Db, where: string, params: unknown[]): UnidadDePedido[] {
   const filas = db
     .prepare(
       `SELECT u.id, u.codigo, u.modelo_id, u.talla, u.estado_fisico,
@@ -81,13 +84,18 @@ function leerUnidades(db: Db, where: string, params: unknown[]): UnidadDePedido[
   }[]
   if (filas.length === 0) return []
 
+  // Ocupación por unidad: 'entregado' = salió y no ha vuelto; 'reservado' = aún no sale (aunque el
+  // pedido ya esté entregado en parte). Las unidades ya devueltas no ocupan nada.
   const ocupaciones = db
     .prepare(
-      `SELECT d.unidad_id, a.id AS alquiler_id, a.estado, a.fecha_salida, a.fecha_devolucion_pactada, c.nombres
+      `SELECT d.unidad_id, a.id AS alquiler_id,
+              CASE WHEN d.fecha_entrega_real IS NOT NULL THEN 'entregado' ELSE 'reservado' END AS estado,
+              a.fecha_salida, a.fecha_devolucion_pactada, c.nombres
        FROM detalle_alquiler d
        JOIN alquileres a ON a.id = d.alquiler_id
        JOIN clientes c ON c.id = a.cliente_id
        WHERE a.estado IN ('reservado', 'entregado')
+         AND d.fecha_devolucion_real IS NULL
          AND d.unidad_id IN (${filas.map(() => '?').join(',')})`
     )
     .all(...filas.map((f) => f.id)) as {
@@ -125,13 +133,13 @@ function leerUnidades(db: Db, where: string, params: unknown[]): UnidadDePedido[
   }))
 }
 
-interface Contexto {
+export interface Contexto {
   margen: number
   precioPorDia: boolean
   hoy: string
 }
 
-function contexto(db: Db, hoy: string): Contexto {
+export function contexto(db: Db, hoy: string): Contexto {
   const c = obtenerConfiguracion(db)
   return { margen: c.diasMargenLavado, precioPorDia: c.precioPorDia, hoy }
 }
@@ -257,12 +265,16 @@ export function eventosSugeridos(db: Db): string[] {
 
 // ---------- Guardar (crear o editar) ----------
 
-interface FilaAlquiler {
+export interface FilaAlquiler {
   id: number
   cliente_id: number
   fecha_reserva: string
   fecha_salida: string
   fecha_devolucion_pactada: string
+  fecha_devolucion_real: string | null
+  entregado_en: string | null
+  garantia_documento: string | null
+  garantia_devuelta: number
   estado: EstadoPedido
   evento: string
   grado_seccion: string
@@ -294,13 +306,13 @@ interface FilaPendiente {
   observaciones: string
 }
 
-function filaAlquiler(db: Db, id: number): FilaAlquiler {
+export function filaAlquiler(db: Db, id: number): FilaAlquiler {
   const fila = db.prepare('SELECT * FROM alquileres WHERE id = ?').get(id) as FilaAlquiler | undefined
   if (!fila) throw new ErrorDeNegocio('No se encontró el pedido. Puede que la lista esté desactualizada.')
   return fila
 }
 
-function exigirReservado(p: FilaAlquiler, accion: string): void {
+export function exigirReservado(p: FilaAlquiler, accion: string): void {
   if (p.estado === 'reservado') return
   const motivo = {
     entregado: 'ya fue entregado',
@@ -323,7 +335,7 @@ function pendientesDe(db: Db, alquilerId: number): FilaPendiente[] {
   return db.prepare('SELECT * FROM pendientes_confeccion WHERE alquiler_id = ? ORDER BY id').all(alquilerId) as FilaPendiente[]
 }
 
-function adelantoNeto(db: Db, alquilerId: number): number {
+export function adelantoNeto(db: Db, alquilerId: number): number {
   const f = db
     .prepare(
       `SELECT COALESCE(SUM(CASE concepto WHEN 'adelanto' THEN monto WHEN 'devolucion_adelanto' THEN -monto ELSE 0 END), 0) AS neto
@@ -333,7 +345,7 @@ function adelantoNeto(db: Db, alquilerId: number): number {
   return f.neto
 }
 
-function totalGuardado(db: Db, alquilerId: number): number {
+export function totalGuardado(db: Db, alquilerId: number): number {
   return totalDelPedido(
     detallesDe(db, alquilerId).map((d) => ({ precioCobrado: d.precio_cobrado })),
     pendientesDe(db, alquilerId).map((p) => ({
@@ -345,7 +357,7 @@ function totalGuardado(db: Db, alquilerId: number): number {
 }
 
 /** Deshace la asignación de una unidad a su pendiente (al quitarla del pedido). */
-function liberarDePendiente(db: Db, pendienteId: number): void {
+export function liberarDePendiente(db: Db, pendienteId: number): void {
   db.prepare(
     `UPDATE pendientes_confeccion
      SET cantidad_asignada = cantidad_asignada - 1,
@@ -708,7 +720,8 @@ export function asignarAPendiente(
   return db.transaction(() => {
     const pend = filaPendiente(db, pendienteId)
     const pedido = filaAlquiler(db, pend.alquiler_id)
-    exigirReservado(pedido, 'asignar unidades')
+    // También con el pedido ya entregado en parte: las unidades se entregan después.
+    if (pedido.estado !== 'entregado') exigirReservado(pedido, 'asignar unidades')
     const faltan = pend.cantidad - pend.cantidad_asignada
     if (faltan <= 0) throw new ErrorDeNegocio('Este pendiente ya tiene todas sus unidades asignadas.')
 
@@ -806,7 +819,8 @@ export function obtenerPedido(db: Db, id: number): FichaPedido {
   const lineas = db
     .prepare(
       `SELECT d.id, d.unidad_id, u.codigo, u.modelo_id, m.nombre AS modelo_nombre, u.talla, u.estado_fisico,
-              d.precio_original, d.precio_cobrado, d.pendiente_id
+              d.precio_original, d.precio_cobrado, d.pendiente_id, d.fecha_entrega_real, d.fecha_devolucion_real,
+              d.estado_devolucion
        FROM detalle_alquiler d JOIN unidades u ON u.id = d.unidad_id JOIN modelos m ON m.id = u.modelo_id
        WHERE d.alquiler_id = ?`
     )
@@ -821,7 +835,17 @@ export function obtenerPedido(db: Db, id: number): FichaPedido {
     precio_original: number
     precio_cobrado: number
     pendiente_id: number | null
+    fecha_entrega_real: string | null
+    fecha_devolucion_real: string | null
+    estado_devolucion: FichaPedido['lineas'][number]['estadoDevolucion']
   }[]
+  const piezas = db
+    .prepare(
+      `SELECT pz.id, pz.unidad_id, pz.nombre, pz.costo_reposicion FROM piezas pz
+       JOIN detalle_alquiler d ON d.unidad_id = pz.unidad_id
+       WHERE d.alquiler_id = ? AND pz.activo = 1 ORDER BY pz.id`
+    )
+    .all(id) as { id: number; unidad_id: number; nombre: string; costo_reposicion: number }[]
   const pendientes = db
     .prepare(
       `SELECT p.*, m.nombre AS modelo_nombre FROM pendientes_confeccion p JOIN modelos m ON m.id = p.modelo_id
@@ -829,11 +853,29 @@ export function obtenerPedido(db: Db, id: number): FichaPedido {
     )
     .all(id) as (FilaPendiente & { modelo_nombre: string })[]
   const pagos = db
-    .prepare('SELECT id, fecha, monto, concepto, medio FROM pagos WHERE alquiler_id = ? ORDER BY fecha, id')
-    .all(id) as { id: number; fecha: string; monto: number; concepto: ConceptoPago; medio: MedioPago }[]
+    .prepare('SELECT id, fecha, monto, concepto, medio, desde_garantia FROM pagos WHERE alquiler_id = ? ORDER BY fecha, id')
+    .all(id) as { id: number; fecha: string; monto: number; concepto: ConceptoPago; medio: MedioPago; desde_garantia: number }[]
+  const cargos = db
+    .prepare(
+      `SELECT g.id, g.tipo, u.codigo, g.monto, g.monto_original, g.motivo_rebaja, g.descripcion
+       FROM cargos g LEFT JOIN unidades u ON u.id = g.unidad_id WHERE g.alquiler_id = ? ORDER BY g.id`
+    )
+    .all(id) as {
+    id: number
+    tipo: CargoPedido['tipo']
+    codigo: string | null
+    monto: number
+    monto_original: number
+    motivo_rebaja: string
+    descripcion: string
+  }[]
 
   const total = totalGuardado(db, id)
   const neto = adelantoNeto(db, id)
+  const cuenta = estadoCuenta(db, id)
+  const porConfeccionar = pendientes.reduce((s, x) => s + x.cantidad - x.cantidad_asignada, 0)
+  const faltanEntregar = lineas.filter((l) => !l.fecha_entrega_real).length + porConfeccionar
+  const faltanDevolver = lineas.filter((l) => l.fecha_entrega_real && !l.fecha_devolucion_real).length
   return {
     id: p.id,
     cliente: {
@@ -865,7 +907,13 @@ export function obtenerPedido(db: Db, id: number): FichaPedido {
         estadoFisico: l.estado_fisico,
         precioOriginal: l.precio_original,
         precioCobrado: l.precio_cobrado,
-        pendienteId: l.pendiente_id
+        pendienteId: l.pendiente_id,
+        fechaEntregaReal: l.fecha_entrega_real,
+        fechaDevolucionReal: l.fecha_devolucion_real,
+        estadoDevolucion: l.estado_devolucion,
+        piezas: piezas
+          .filter((pz) => pz.unidad_id === l.unidad_id)
+          .map((pz) => ({ id: pz.id, nombre: pz.nombre, costoReposicion: pz.costo_reposicion }))
       }))
       .sort((a, b) => a.modeloNombre.localeCompare(b.modeloNombre, 'es') || a.codigo.localeCompare(b.codigo, 'es')),
     pendientes: pendientes.map((x) => ({
@@ -881,8 +929,35 @@ export function obtenerPedido(db: Db, id: number): FichaPedido {
       precioCobrado: x.precio_cobrado,
       observaciones: x.observaciones
     })),
-    pagos,
-    totales: { total, adelantoNeto: neto, saldo: total - neto }
+    pagos: pagos.map((x) => ({
+      id: x.id,
+      fecha: x.fecha,
+      monto: x.monto,
+      concepto: x.concepto,
+      medio: x.medio,
+      desdeGarantia: x.desde_garantia === 1
+    })),
+    totales: { total, adelantoNeto: neto, saldo: Math.max(0, total - cuenta.pagadoAlquiler) },
+    entregadoEn: p.entregado_en,
+    fechaDevolucionReal: p.fecha_devolucion_real,
+    cargos: cargos.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      codigo: c.codigo,
+      monto: c.monto,
+      montoOriginal: c.monto_original,
+      motivoRebaja: c.motivo_rebaja,
+      descripcion: c.descripcion
+    })),
+    cuenta: {
+      plan: planLiquidacion(cuenta),
+      faltanEntregar,
+      faltanDevolver,
+      totalUnidades: lineas.length + porConfeccionar,
+      listoParaLiquidar: p.estado === 'entregado' && faltanEntregar === 0 && faltanDevolver === 0,
+      garantiaDocumento: p.garantia_documento,
+      garantiaCerrada: p.garantia_devuelta === 1
+    }
   }
 }
 
@@ -897,7 +972,9 @@ export function listarPedidos(db: Db): ResumenPedido[] {
               (SELECT COALESCE(SUM((p.cantidad - p.cantidad_asignada) * p.precio_cobrado), 0)
                  FROM pendientes_confeccion p WHERE p.alquiler_id = a.id) AS total_pendientes,
               (SELECT GROUP_CONCAT(u.codigo, ' ') FROM detalle_alquiler d JOIN unidades u ON u.id = d.unidad_id
-                 WHERE d.alquiler_id = a.id) AS codigos
+                 WHERE d.alquiler_id = a.id) AS codigos,
+              (SELECT COUNT(*) FROM detalle_alquiler d WHERE d.alquiler_id = a.id
+                 AND d.fecha_entrega_real IS NOT NULL AND d.fecha_devolucion_real IS NULL) AS fuera
        FROM alquileres a JOIN clientes c ON c.id = a.cliente_id
        ORDER BY a.fecha_salida DESC, a.id DESC`
     )
@@ -916,6 +993,7 @@ export function listarPedidos(db: Db): ResumenPedido[] {
     por_confeccionar: number
     total_pendientes: number
     codigos: string | null
+    fuera: number
   }[]
   return filas.map((f) => ({
     id: f.id,
@@ -930,6 +1008,8 @@ export function listarPedidos(db: Db): ResumenPedido[] {
     unidades: f.unidades,
     porConfeccionar: f.estado === 'cancelado' ? 0 : f.por_confeccionar,
     total: f.total_lineas + f.total_pendientes,
-    codigos: f.codigos ? f.codigos.split(' ') : []
+    codigos: f.codigos ? f.codigos.split(' ') : [],
+    fuera: f.fuera,
+    debe: f.estado === 'devuelto' ? calcularDeuda(estadoCuenta(db, f.id)).total : 0
   }))
 }

@@ -71,16 +71,21 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
   - responsable: profesora o coordinadora a cargo (para colegios). dni_responsable: su DNI. Ambos obligatorios para colegios (la garantía suele ser el DNI de la responsable).
   - Los colegios se identifican por **nombre + distrito**. RUC opcional; sin código modular.
   - Al registrar un colegio, avisar si ya existe uno con nombre parecido, para evitar duplicados.
-- **alquileres**: id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, fecha_devolucion_real, estado, garantia_tipo, garantia_monto, garantia_devuelta, evento, grado_seccion, observaciones
+- **alquileres**: id, cliente_id, fecha_reserva, fecha_salida, fecha_devolucion_pactada, fecha_devolucion_real, estado, garantia_tipo, garantia_monto, garantia_devuelta, garantia_documento, entregado_en, evento, grado_seccion, observaciones
+  - entregado_en: primera entrega. fecha_devolucion_real: la de la última unidad (se llena al cerrar).
+  - garantia_documento: número del DNI (u otro documento) que queda en prenda. garantia_devuelta = 1 cuando la garantía se liquidó o el documento se devolvió.
   - evento: texto libre con sugerencias (Día de la Madre, Fiestas Patrias, aniversario, primavera, clausura...).
   - grado_seccion: opcional (ej. "3.° B").
   - estado: `reservado`, `entregado`, `devuelto`, `cancelado`
   - garantia_tipo: `efectivo`, `dni`
-- **detalle_alquiler**: id, alquiler_id, unidad_id, precio_original, precio_cobrado, estado_devolucion, observaciones, pendiente_id
+- **detalle_alquiler**: id, alquiler_id, unidad_id, precio_original, precio_cobrado, estado_devolucion, observaciones, pendiente_id, fecha_entrega_real, entregado_por, fecha_devolucion_real, recibido_por
   - pendiente_id (opcional): el pendiente de confección que cubrió esta unidad.
-- **cargos**: id, alquiler_id, unidad_id (opcional), tipo (`mora`, `dano`, `pieza_faltante`), monto, descripcion
+  - **Entrega y devolución por unidad:** cada unidad tiene su fecha de entrega y de devolución. estado_devolucion: `bien`, `con_danos`, `con_faltantes`, `con_danos_y_faltantes` (vacío mientras no vuelve).
+- **cargos**: id, alquiler_id, unidad_id (opcional), pieza_id (opcional), tipo (`mora`, `dano`, `pieza_faltante`), monto, monto_original, motivo_rebaja, descripcion
+  - monto puede bajar (hasta 0) solo si la dueña rebaja o perdona la mora; monto_original y motivo_rebaja lo registran.
 - **pagos**: id, alquiler_id, fecha, monto, concepto (`adelanto`, `saldo`, `garantia_recibida`, `garantia_devuelta`, `mora`, `dano`, `devolucion_adelanto`), medio (`efectivo`, `yape`, `plin`, `transferencia`, `tarjeta`)
-  - devolucion_adelanto: lo que se devuelve del adelanto al cancelar. Lo retenido (adelanto − devoluciones de un pedido cancelado) cuenta como ingreso en los reportes.
+  - devolucion_adelanto: lo que se devuelve del adelanto al cancelar (o lo pagado de más al cerrar). Lo retenido (adelanto − devoluciones de un pedido cancelado) cuenta como ingreso en los reportes.
+  - desde_garantia = 1: pago tomado de la garantía en dinero al cerrar el pedido (cuenta como ingreso de su concepto; la garantía en sí nunca es ingreso).
 - **usuarios**: id, nombre, usuario, contraseña (hash con bcrypt), rol (`admin`, `empleado`), activo
 - **configuracion**: mora_por_dia, modo_mora, dias_margen_lavado, precio_por_dia, carpeta_respaldo, nombre_tienda
   - modo_mora: `por_unidad` (por defecto: días de retraso × mora_por_dia por cada unidad) o `por_pedido` (días de retraso × mora_por_dia una sola vez por pedido). Editable en Configuración.
@@ -129,9 +134,18 @@ La pantalla del pedido funciona como un carrito: cada vez que se agrega o quita 
 - Dentro de un pedido, se puede ajustar el precio de un disfraz solo para ese pedido (por ejemplo, un descuento), sin tocar el precio general. El sistema guarda el precio original y el precio cobrado, para que la dueña vea en los reportes qué pedidos tuvieron descuento. En pedidos grandes, opción **"Aplicar este precio a todos los del pedido"** (del mismo modelo) para no cambiarlos uno por uno. Si se confirma que el precio es por día, el precio de cada disfraz se multiplica por la cantidad de días del alquiler: la diferencia entre la fecha de devolución y la de salida, mínimo 1. Si cambian las fechas, los precios ya copiados se reajustan en proporción a los días.
 2. **Entregar**: cobrar saldo → registrar garantía (efectivo o DNI en prenda) → estado `entregado`.
    - No se puede entregar un pedido con pendientes de confección sin resolver, salvo que **la dueña** confirme entregar lo disponible.
+   - **Por unidad:** se eligen las unidades que salen; las demás (por ejemplo, las que se confeccionan después) se entregan más tarde **dentro del mismo pedido** ("el colegio recoge 27 hoy y 3 mañana"). El saldo y la garantía se registran en la primera entrega.
+   - Saldo completo; solo con autorización de la dueña se entrega con saldo pendiente, que queda como deuda del pedido. Se puede pagar con varios medios.
+   - Solo desde la fecha de salida. Antes, con **"Entregar hoy (adelantar la salida)"**, que verifica la disponibilidad desde hoy y ajusta la fecha.
+   - Una unidad que todavía no vuelve de otro pedido bloquea la entrega ("cámbiela por otra libre"). Las que están en lavandería se entregan confirmando que ya están limpias; las de reparación no.
+   - Si la confección nunca llega, la dueña puede "cancelar lo que no se entregó": el total baja y lo pagado de más se devuelve al cerrar.
 3. **Devolver**: revisar cada unidad con checklist de sus piezas → calcular mora = días de retraso × mora_por_dia → registrar daños y piezas faltantes → descontar todo de la garantía → mostrar claramente cuánto se le devuelve al cliente o cuánto falta cobrar → unidades pasan a `lavanderia`.
    - **Devolución parcial:** cada unidad se recibe por separado y la mora se calcula por unidad (o por pedido, según `modo_mora`).
    - El pedido sigue `entregado` hasta que vuelve la última unidad, y muestra siempre cuántas faltan (ej. "Faltan 3 de 30").
+   - Fecha de devolución: por defecto hoy; se puede registrar una anterior (nunca antes de la entrega ni futura) para no cobrar mora injusta.
+   - Mora: días de retraso = fecha real − pactada (el margen de lavado no cuenta). `por_unidad`: cada unidad atrasada paga sus días. `por_pedido`: una sola mora por el mayor retraso; en devoluciones parciales se cobra solo la diferencia de días (nunca dos veces).
+   - Solo **la dueña** rebaja o perdona la mora, con motivo obligatorio en auditoría.
+   - **Liquidación** (al no quedar nada por entregar ni devolver): la garantía en dinero cubre la deuda en este orden: **saldo, daños y faltantes, mora**. Lo que sobra se devuelve; si no alcanza, "Falta cobrar S/ X". Si no paga en el momento, el pedido se cierra igual como `devuelto` con **"Debe S/ X"**, visible en el cliente y contado como antecedente. El **DNI en prenda se retiene hasta que pague**.
 4. **Liberar**: marcar unidades de `lavanderia` o `reparacion` como `disponible`.
 
 ### Historial del cliente
@@ -170,6 +184,9 @@ Qué ve cada rol:
 - **Reportes y Configuración**: solo la dueña. No aparecen en el menú de Trabajadores.
 - Login al abrir la app.
 - Cada operación (pedido, entrega, devolución, cambio de precio) registra qué cuenta la hizo y cuándo.
+- **Autorización de la dueña sin cerrar sesión:** la laptop estará casi siempre con la sesión de Trabajadores. Toda acción "solo para la dueña" (autorizar saldo pendiente, entregar con pendientes, rebajar o perdonar la mora, cancelar lo que no se entregó, dar de baja, reactivar) pide **la contraseña de la dueña en un diálogo en ese momento**, sin cerrar sesión.
+  - Ya preparado: en el renderer todas pasan por `useAutorizacionDuena()`; en el main, por `exigirDuena(sesion, accion, autorizacion)`, que acepta la contraseña mediante `establecerVerificadorDuena()`.
+  - **Fase 7:** agregar el campo de contraseña al diálogo de `useAutorizacionDuena()` cuando la sesión sea de Trabajadores, y registrar el verificador (bcrypt) al iniciar sesión.
 
 ## Respaldos
 - Al cerrar la app, respaldar en la carpeta de respaldo configurada (por defecto una carpeta sincronizada con Google Drive o OneDrive), conservando los últimos 30 respaldos con fecha en el nombre.
@@ -212,13 +229,16 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - better-sqlite3 está compilado para Electron, por eso Vitest corre con el binario de Electron (`ELECTRON_RUN_AS_NODE=1`) mediante `scripts/con-electron.mjs`.
 - La terminal de VS Code define `ELECTRON_RUN_AS_NODE=1`; los scripts `dev`, `start`, `seed` y las pruebas E2E lo quitan para que Electron abra ventanas.
 - `DISFRACES_DATOS_DIR` cambia la carpeta de datos (lo usan las pruebas E2E).
+- Pruebas E2E con días de retraso: `tests/e2e/entregas.spec.ts` adelanta el reloj de la app (main y ventana) en lugar de manipular la base.
+- Si las pruebas E2E fallan todas con `ECONNRESET`, quedó un Electron abierto (instancia única): cerrarlo y reintentar.
 - Electron arranca con `--lang=es-PE` (Chromium lo sirve como `es-419`) para que los campos de fecha muestren dd/mm/aaaa.
 - En layouts de dos columnas usar `grid-cols-[minmax(0,1fr)_…]`, no `1fr`: con `1fr` el contenido largo desborda a 1366×768.
 
 ### Estructura
 - `src/shared/` — contrato IPC tipado (`ipc.ts`), formatos de soles/fechas y reglas compartidas de disfraces (`disfraces.ts`: `TALLAS`, `normalizarTalla`, `compararTallas`/`ordenarTallas`, `filtrarModelos`); lo usan main, preload y renderer. Ordenar tallas siempre con `compararTallas`, nunca con orden alfabético.
 - `src/main/` — proceso main:
-  - `logica/` — reglas de negocio puras, sin base de datos: `disponibilidad.ts` (la regla de disponibilidad y la asignación por cantidad), `pedidos.ts`, `clientes.ts`, `disfraces.ts`.
+  - `logica/` — reglas de negocio puras, sin base de datos: `disponibilidad.ts` (la regla de disponibilidad y la asignación por cantidad), `mora.ts`, `liquidacion.ts` (estado de cuenta y cobertura de la garantía), `pedidos.ts`, `clientes.ts`, `disfraces.ts`.
+  - `db/entregas.ts` — entregar, devolver (con previsualización exacta: se aplica en una transacción y se deshace), liquidar, pagos de deuda, rebaja de mora. `db/cuentas.ts` — estado de cuenta de cada pedido y deudas por cliente.
   - `db/` — conexión, migraciones y acceso a datos; cada escritura en una transacción con su registro en `auditoria`.
   - `ipc.ts` (handlers), `errores.ts` (`ErrorDeNegocio` = mensaje para la usuaria).
   - `sesion.ts` — cuenta actual y `exigirDuena()`. **Fase 7:** hoy la sesión es `null` y se permite todo; al agregar el login, dar de baja y reactivar quedarán solo para la dueña sin cambiar nada más.

@@ -13,6 +13,7 @@ import SelectorRegion from '../componentes/disfraces/SelectorRegion'
 import { useAvisos } from '../componentes/ui/Avisos'
 import Boton from '../componentes/ui/Boton'
 import { CampoTexto } from '../componentes/ui/Campos'
+import { useAutorizacionDuena } from '../componentes/ui/AutorizacionDuena'
 import { useConfirmar } from '../componentes/ui/Confirmacion'
 
 function soloNumero(centimos: number): string {
@@ -23,6 +24,7 @@ export default function FichaDisfraz(): React.JSX.Element {
   const id = Number(useParams().id)
   const avisos = useAvisos()
   const confirmar = useConfirmar()
+  const autorizarDuena = useAutorizacionDuena()
 
   const [ficha, setFicha] = useState<FichaModelo | null>(null)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
@@ -126,53 +128,67 @@ export default function FichaDisfraz(): React.JSX.Element {
   }
 
   const cambiarEstado = async (unidad: Unidad, estado: EstadoFisico, exito: string): Promise<void> => {
-    await ejecutar(() => llamar(window.api.unidades.cambiarEstado(unidad.id, estado)), exito)
+    await ejecutar(() => llamar(window.api.unidades.cambiarEstado(unidad.id, estado, null)), exito)
   }
 
   const darDeBajaUnidad = async (unidad: Unidad): Promise<void> => {
-    const ok = await confirmar({
+    const ok = await autorizarDuena({
       titulo: `¿Dar de baja ${unidad.codigo}?`,
       mensaje: 'Esta unidad ya no se podrá alquilar. Su historial se conserva y la dueña puede reactivarla después.',
       textoConfirmar: 'Sí, dar de baja',
       variante: 'peligro'
     })
     if (!ok) return
-    if (await ejecutar(() => llamar(window.api.unidades.cambiarEstado(unidad.id, 'baja')), `${unidad.codigo} fue dada de baja.`)) {
+    if (
+      await ejecutar(
+        () => llamar(window.api.unidades.cambiarEstado(unidad.id, 'baja', ok.autorizacion)),
+        `${unidad.codigo} fue dada de baja.`
+      )
+    ) {
       setUnidadAbierta(null)
     }
   }
 
   const reactivarUnidad = async (unidad: Unidad): Promise<void> => {
-    const ok = await confirmar({
+    const ok = await autorizarDuena({
       titulo: `¿Reactivar ${unidad.codigo}?`,
       mensaje: 'La unidad volverá a estar disponible para alquilar.',
       textoConfirmar: 'Sí, reactivar',
       variante: 'exito'
     })
     if (!ok) return
-    if (await ejecutar(() => llamar(window.api.unidades.cambiarEstado(unidad.id, 'disponible')), `${unidad.codigo} fue reactivada.`)) {
+    if (
+      await ejecutar(
+        () => llamar(window.api.unidades.cambiarEstado(unidad.id, 'disponible', ok.autorizacion)),
+        `${unidad.codigo} fue reactivada.`
+      )
+    ) {
       setUnidadAbierta(null)
     }
   }
 
   const darDeBajaModelo = async (): Promise<void> => {
-    const ok = await confirmar({
+    const ok = await autorizarDuena({
       titulo: `¿Dar de baja "${ficha.nombre}"?`,
       mensaje: 'El disfraz ya no aparecerá para nuevos alquileres. No se borra nada y la dueña puede reactivarlo después.',
       textoConfirmar: 'Sí, dar de baja',
       variante: 'peligro'
     })
-    if (ok) await ejecutar(() => llamar(window.api.modelos.darDeBaja(ficha.id)), `"${ficha.nombre}" fue dado de baja.`)
+    if (ok) {
+      await ejecutar(() => llamar(window.api.modelos.darDeBaja(ficha.id, ok.autorizacion)), `"${ficha.nombre}" fue dado de baja.`)
+    }
   }
 
   const reactivarModelo = async (): Promise<void> => {
-    const ok = await confirmar({
+    const ok = await autorizarDuena({
       titulo: `¿Reactivar "${ficha.nombre}"?`,
       mensaje: 'El disfraz volverá a aparecer para nuevos alquileres.',
       textoConfirmar: 'Sí, reactivar',
       variante: 'exito'
     })
-    if (ok) await ejecutar(() => llamar(window.api.modelos.reactivar(ficha.id)), `"${ficha.nombre}" fue reactivado.`)
+    if (ok) {
+      await ejecutar(() => llamar(window.api.modelos.reactivar(ficha.id, ok.autorizacion)), `"${ficha.nombre}" fue reactivado.`)
+    }
   }
 
   const elegirFoto = async (): Promise<void> => {

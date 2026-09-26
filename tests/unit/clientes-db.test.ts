@@ -169,16 +169,17 @@ describe('historial', () => {
     alquiler(id, 'devuelto', '2026-10-07', '2026-10-07') // a tiempo
     const tarde = alquiler(id, 'devuelto', '2026-10-07', '2026-10-09') // 2 días tarde
     alquiler(id, 'cancelado')
-    db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto) VALUES (?, 'mora', 1000)").run(tarde)
-    db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto) VALUES (?, 'dano', 2500)").run(tarde)
-    db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto) VALUES (?, 'pieza_faltante', 1500)").run(tarde)
+    db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto, monto_original) VALUES (?, 'mora', 1000, 1000)").run(tarde)
+    db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto, monto_original) VALUES (?, 'dano', 2500, 2500)").run(tarde)
+    db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto, monto_original) VALUES (?, 'pieza_faltante', 1500, 1500)").run(tarde)
 
     const ficha = clientes.obtenerFichaCliente(db, id)
     expect(ficha.historial).toEqual({
       alquileresTotales: 2,
       devolucionesTardias: 1,
       cargosPorDanos: 2,
-      montoCargosPorDanos: 4000
+      montoCargosPorDanos: 4000,
+      deudaPendiente: 5000 // mora 10 + daños 25 + faltante 15, sin pagar
     })
     expect(ficha.conAntecedentes).toBe(true)
     expect(ficha.alquileres).toHaveLength(3)

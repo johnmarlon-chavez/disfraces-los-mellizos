@@ -93,7 +93,7 @@ describe('esquema inicial', () => {
         .run(alquilerId)
     ).toThrow(/CHECK/)
     expect(() =>
-      db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto) VALUES (?, 'multa', 500)").run(alquilerId)
+      db.prepare("INSERT INTO cargos (alquiler_id, tipo, monto, monto_original) VALUES (?, 'multa', 500, 500)").run(alquilerId)
     ).toThrow(/CHECK/)
   })
 
@@ -110,7 +110,7 @@ describe('esquema inicial', () => {
     const medios = ['efectivo', 'yape', 'plin', 'transferencia', 'tarjeta']
     conceptos.forEach((c, i) => insPago.run(alquilerId, c, medios[i % medios.length]))
     for (const t of ['mora', 'dano', 'pieza_faltante']) {
-      db.prepare('INSERT INTO cargos (alquiler_id, tipo, monto) VALUES (?, ?, 500)').run(alquilerId, t)
+      db.prepare('INSERT INTO cargos (alquiler_id, tipo, monto, monto_original) VALUES (?, ?, 500, 500)').run(alquilerId, t)
     }
   })
 

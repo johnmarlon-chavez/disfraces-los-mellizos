@@ -43,12 +43,23 @@ export async function ventanaMinima(app: ElectronApplication, ventana: Page): Pr
       })
     )
     .toBe(true)
-  await app.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0]
-    win.unmaximize()
-    win.setContentSize(1366, 768)
-  })
-  await ventana.waitForFunction(() => window.innerWidth === 1366)
+  // En equipos con dos monitores la ventana puede abrir en el segundo, y el primer ajuste a veces
+  // no se aplica: se lleva al monitor principal y se reintenta hasta que el contenido mida 1366 px.
+  await expect
+    .poll(
+      async () => {
+        await app.evaluate(({ BrowserWindow, screen }) => {
+          const win = BrowserWindow.getAllWindows()[0]
+          if (win.isMaximized()) win.unmaximize()
+          const area = screen.getPrimaryDisplay().workArea
+          win.setPosition(area.x, area.y)
+          win.setContentSize(1366, 768)
+        })
+        return ventana.evaluate(() => window.innerWidth)
+      },
+      { intervals: [200, 500, 1000], timeout: 15_000 }
+    )
+    .toBe(1366)
 }
 
 export async function hayDesbordeHorizontal(ventana: Page): Promise<boolean> {

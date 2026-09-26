@@ -24,6 +24,7 @@ import {
 } from '../logica/clientes'
 import type { Sesion } from '../sesion'
 import { registrarAuditoria } from './auditoria'
+import { deudasPorCliente } from './cuentas'
 
 type Db = Database.Database
 
@@ -61,16 +62,17 @@ const SQL_CLIENTES = `
       WHERE a.cliente_id = c.id AND g.tipo IN ('dano', 'pieza_faltante')) AS monto_cargos_por_danos
   FROM clientes c`
 
-function historialDe(f: FilaCliente): HistorialCliente {
+function historialDe(f: FilaCliente, deuda: number): HistorialCliente {
   return {
     alquileresTotales: f.alquileres_totales,
     devolucionesTardias: f.devoluciones_tardias,
     cargosPorDanos: f.cargos_por_danos,
-    montoCargosPorDanos: f.monto_cargos_por_danos
+    montoCargosPorDanos: f.monto_cargos_por_danos,
+    deudaPendiente: deuda
   }
 }
 
-function resumenDe(f: FilaCliente): ResumenCliente {
+function resumenDe(f: FilaCliente, deuda: number): ResumenCliente {
   return {
     id: f.id,
     tipo: f.tipo,
@@ -83,7 +85,7 @@ function resumenDe(f: FilaCliente): ResumenCliente {
     ruc: f.ruc,
     telefono: f.telefono,
     activo: f.activo === 1,
-    conAntecedentes: tieneAntecedentes(historialDe(f))
+    conAntecedentes: tieneAntecedentes(historialDe(f, deuda))
   }
 }
 
@@ -96,11 +98,15 @@ function filaCliente(db: Db, id: number): FilaCliente {
 // ---------- Lectura ----------
 
 export function listarClientes(db: Db): ResumenCliente[] {
-  return (db.prepare(`${SQL_CLIENTES} ORDER BY c.nombres`).all() as FilaCliente[]).map(resumenDe)
+  const deudas = deudasPorCliente(db)
+  return (db.prepare(`${SQL_CLIENTES} ORDER BY c.nombres`).all() as FilaCliente[]).map((f) =>
+    resumenDe(f, deudas.get(f.id) ?? 0)
+  )
 }
 
 export function obtenerFichaCliente(db: Db, id: number): FichaCliente {
   const f = filaCliente(db, id)
+  const deuda = deudasPorCliente(db, id).get(id) ?? 0
   const alquileres = db
     .prepare(
       `SELECT a.id, a.fecha_salida, a.fecha_devolucion_pactada, a.fecha_devolucion_real, a.estado,
@@ -117,10 +123,10 @@ export function obtenerFichaCliente(db: Db, id: number): FichaCliente {
   }[]
 
   return {
-    ...resumenDe(f),
+    ...resumenDe(f, deuda),
     direccion: f.direccion,
     observaciones: f.observaciones,
-    historial: historialDe(f),
+    historial: historialDe(f, deuda),
     alquileres: alquileres.map((a) => ({
       id: a.id,
       fechaSalida: a.fecha_salida,
@@ -252,7 +258,7 @@ export function actualizarCliente(db: Db, id: number, datos: DatosCliente, sesio
        WHERE id = ?`
     ).run(...valores(c).slice(1), id)
     registrarAuditoria(db, sesion, 'cliente_editado', 'cliente', id, {
-      antes: resumenDe(anterior),
+      antes: resumenDe(anterior, 0),
       despues: { ...c }
     })
   })()

@@ -67,7 +67,7 @@ export default function SelectorCliente({ clienteId, onElegir }: Props): React.J
         </div>
         {elegido.conAntecedentes && (
           <p role="alert" className="rounded-lg border-2 border-amber-600 bg-amber-50 p-3 text-lg font-semibold text-amber-900">
-            ⚠ Este cliente tiene antecedentes: devoluciones tardías o cargos por daños. Revise su ficha antes de continuar.
+            ⚠ Este cliente tiene antecedentes: devoluciones tardías, cargos por daños o deudas. Revise su ficha antes de continuar.
           </p>
         )}
       </div>

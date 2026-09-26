@@ -5,6 +5,7 @@ import { mensajeParaUsuario } from './errores'
 import { obtenerConfiguracion } from './db/configuracion'
 import * as clientes from './db/clientes'
 import * as disfraces from './db/disfraces'
+import * as entregas from './db/entregas'
 import * as pedidos from './db/pedidos'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
@@ -36,8 +37,8 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('modelos:cambiarPrefijo', (id, prefijo) => disfraces.cambiarPrefijo(db, id, prefijo, obtenerSesion()))
   manejar('modelos:actualizar', (id, datos) => disfraces.actualizarModelo(db, id, datos, obtenerSesion()))
   manejar('modelos:cambiarPrecio', (id, precio) => disfraces.cambiarPrecio(db, id, precio, obtenerSesion()))
-  manejar('modelos:darDeBaja', (id) => disfraces.darDeBajaModelo(db, id, obtenerSesion()))
-  manejar('modelos:reactivar', (id) => disfraces.reactivarModelo(db, id, obtenerSesion()))
+  manejar('modelos:darDeBaja', (id, aut) => disfraces.darDeBajaModelo(db, id, obtenerSesion(), aut))
+  manejar('modelos:reactivar', (id, aut) => disfraces.reactivarModelo(db, id, obtenerSesion(), aut))
   manejar('modelos:elegirFoto', async (id) => {
     disfraces.obtenerFicha(db, id) // valida que exista antes de abrir el diálogo
     const nombre = await elegirYGuardarFoto(rutas.fotos, id)
@@ -51,7 +52,9 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('unidades:piezasSugeridas', (modeloId) => disfraces.piezasSugeridas(db, modeloId))
   manejar('unidades:crear', (datos) => disfraces.crearUnidades(db, datos, obtenerSesion()))
   manejar('unidades:actualizar', (id, datos) => disfraces.actualizarUnidad(db, id, datos, obtenerSesion()))
-  manejar('unidades:cambiarEstado', (id, estado) => disfraces.cambiarEstadoUnidad(db, id, estado, obtenerSesion()))
+  manejar('unidades:cambiarEstado', (id, estado, aut) =>
+    disfraces.cambiarEstadoUnidad(db, id, estado, obtenerSesion(), aut)
+  )
 
   manejar('clientes:listar', () => clientes.listarClientes(db))
   manejar('clientes:obtener', (id) => clientes.obtenerFichaCliente(db, id))
@@ -82,4 +85,16 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('pendientes:cambiarEstado', (id, estado) => pedidos.cambiarEstadoPendiente(db, id, estado, obtenerSesion()))
   manejar('pendientes:asignar', (id, unidades) => pedidos.asignarAPendiente(db, id, unidades, obtenerSesion()))
   manejar('pendientes:abiertos', (modeloId, talla) => pedidos.pendientesAbiertos(db, modeloId, talla))
+
+  manejar('entregas:entregar', (id, datos, aut) => entregas.entregar(db, id, datos, obtenerSesion(), aut))
+  manejar('entregas:previsualizar', (id, datos) => entregas.previsualizarDevolucion(db, id, datos))
+  manejar('entregas:devolver', (id, datos) => entregas.devolver(db, id, datos, obtenerSesion()))
+  manejar('entregas:liquidar', (id, datos) => entregas.liquidar(db, id, datos, obtenerSesion()))
+  manejar('entregas:pagarDeuda', (id, monto, medio) => entregas.registrarPagoDeuda(db, id, monto, medio, obtenerSesion()))
+  manejar('entregas:devolverDocumento', (id) => entregas.devolverDocumento(db, id, obtenerSesion()))
+  manejar('entregas:rebajarMora', (cargoId, monto, motivo, aut) =>
+    entregas.rebajarMora(db, cargoId, monto, motivo, obtenerSesion(), aut)
+  )
+  manejar('entregas:cancelarLoQueFalta', (id, aut) => entregas.cancelarLoQueFalta(db, id, obtenerSesion(), aut))
+  manejar('entregas:liberar', (id) => entregas.liberarUnidades(db, id, obtenerSesion()))
 }

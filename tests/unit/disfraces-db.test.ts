@@ -47,9 +47,13 @@ function alquilar(codigo: string, estado: 'reservado' | 'entregado' | 'devuelto'
        VALUES (?, '2026-10-20', '2026-10-28', '2026-10-31', ?)`
     )
     .run(cliente.lastInsertRowid, estado)
+  // Entregado: la unidad salió el 28/10; devuelto: además volvió el 31/10.
+  const entregada = estado === 'entregado' || estado === 'devuelto' ? '2026-10-28' : null
+  const devuelta = estado === 'devuelto' ? '2026-10-31' : null
   db.prepare(
-    'INSERT INTO detalle_alquiler (alquiler_id, unidad_id, precio_original, precio_cobrado) VALUES (?, ?, 3500, 3500)'
-  ).run(alquiler.lastInsertRowid, unidadId(codigo))
+    `INSERT INTO detalle_alquiler (alquiler_id, unidad_id, precio_original, precio_cobrado,
+       fecha_entrega_real, fecha_devolucion_real, estado_devolucion) VALUES (?, ?, 3500, 3500, ?, ?, ?)`
+  ).run(alquiler.lastInsertRowid, unidadId(codigo), entregada, devuelta, devuelta ? 'bien' : null)
 }
 
 describe('modelos', () => {

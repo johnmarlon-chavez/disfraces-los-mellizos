@@ -3,6 +3,7 @@ import Layout from './componentes/Layout'
 import Inicio from './paginas/Inicio'
 import Alquileres from './paginas/Alquileres'
 import FichaPedido from './paginas/FichaPedido'
+import PantallaDevolucion from './paginas/PantallaDevolucion'
 import PantallaPedido from './paginas/PantallaPedido'
 import Disfraces from './paginas/Disfraces'
 import FichaDisfraz from './paginas/FichaDisfraz'
@@ -22,6 +23,7 @@ export default function App(): React.JSX.Element {
         <Route path="alquileres/nuevo" element={<PantallaPedido />} />
         <Route path="alquileres/:id" element={<FichaPedido />} />
         <Route path="alquileres/:id/editar" element={<PantallaPedido />} />
+        <Route path="alquileres/:id/devolucion" element={<PantallaDevolucion />} />
         <Route path="disfraces" element={<Disfraces />} />
         <Route path="disfraces/nuevo" element={<NuevoDisfraz />} />
         <Route path="disfraces/:id" element={<FichaDisfraz />} />
