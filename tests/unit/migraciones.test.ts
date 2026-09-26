@@ -244,6 +244,37 @@ describe('aplicarMigraciones', () => {
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
   })
 
+  describe('nombre de la tienda (migraciones 007 y 008)', () => {
+    const nombre = (db: Database.Database) =>
+      (db.prepare('SELECT nombre_tienda FROM configuracion').get() as { nombre_tienda: string }).nombre_tienda
+
+    it('una base nueva nunca recibe "Librería AB", ni siquiera de paso', () => {
+      const db = new Database(':memory:')
+      aplicarMigraciones(db, MIGRACIONES.slice(0, 6))
+      for (const m of MIGRACIONES.slice(6)) {
+        aplicarMigraciones(db, MIGRACIONES.slice(0, m.version))
+        expect(nombre(db)).toBe('Disfraces Los Mellizos')
+      }
+    })
+
+    it('la 008 solo cambia el nombre si es exactamente "Librería AB"', () => {
+      for (const [antes, despues] of [
+        ['Librería AB', 'Disfraces Los Mellizos'],
+        ['Libreria AB', 'Libreria AB'],
+        ['librería ab', 'librería ab'],
+        ['Librería AB ', 'Librería AB '],
+        ['Librería AB Trujillo', 'Librería AB Trujillo'],
+        ['Disfraces Mellizos', 'Disfraces Mellizos']
+      ]) {
+        const db = new Database(':memory:')
+        aplicarMigraciones(db, MIGRACIONES.slice(0, 7))
+        db.prepare('UPDATE configuracion SET nombre_tienda = ?').run(antes)
+        aplicarMigraciones(db)
+        expect(nombre(db), antes).toBe(despues)
+      }
+    })
+  })
+
   it('avisa con un mensaje claro si la base es de una versión más nueva del programa', () => {
     const db = new Database(':memory:')
     db.pragma(`user_version = ${MIGRACIONES.length + 1}`)

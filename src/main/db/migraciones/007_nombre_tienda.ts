@@ -1,12 +1,13 @@
 import type { Migracion } from './index'
 
-// La tienda cambió de nombre: "Disfraces Los Mellizos" -> "Librería AB".
-// Solo se actualiza si todavía tiene el nombre anterior (no pisa un nombre puesto a mano).
+// Sin efecto a propósito. Esta migración cambiaba el nombre de la tienda a "Librería AB" por un
+// error de pedido que se deshizo enseguida (ver 008). Solo llegó a correr en la base de
+// desarrollo, que ya pasó por la 008; la app todavía no estaba instalada en la laptop de la dueña.
+// Se vació para que ninguna base nueva reciba ese nombre, ni siquiera de paso. Se conserva el
+// número 7 para no alterar la numeración de las migraciones.
 
 export const migracion007: Migracion = {
   version: 7,
   nombre: 'nombre_tienda',
-  aplicar(db) {
-    db.prepare("UPDATE configuracion SET nombre_tienda = 'Librería AB' WHERE nombre_tienda = 'Disfraces Los Mellizos'").run()
-  }
+  aplicar() {}
 }
