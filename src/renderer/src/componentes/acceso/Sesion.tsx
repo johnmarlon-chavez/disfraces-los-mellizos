@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { AVISO_INACTIVIDAD_MS, type EstadoAcceso, type SesionInfo } from '../../../../shared/contrasenas'
+import { formatearFecha, formatearHora } from '../../../../shared/formato'
 import Boton from '../ui/Boton'
 import Dialogo from '../ui/Dialogo'
 import AsistentePrimerUso from './AsistentePrimerUso'
@@ -101,6 +102,7 @@ export function ProveedorSesion({ children }: { children: ReactNode }): React.JS
         {children}
       </div>
       {esDuena && <VigilanteInactividad key={ingresos} limiteMs={estado.inactividadMs} onVencida={porInactividad} />}
+      {esDuena && estado.avisoRestablecido && <AvisoRestablecimiento instante={estado.avisoRestablecido} onEntendido={cargar} />}
     </Contexto.Provider>
   )
 }
@@ -174,5 +176,38 @@ function VigilanteInactividad({ limiteMs, onVencida }: { limiteMs: number; onVen
         Por seguridad, la sesión de la dueña se cerrará en <strong>{restante} segundos</strong> porque no hubo actividad.
       </p>
     </Dialogo>
+  )
+}
+
+/**
+ * Aviso a la dueña de que soporte restableció el acceso de su cuenta. Solo se cierra con
+ * "Entendido" (sin Escape ni "Cerrar"), y queda en auditoría que lo vio.
+ */
+function AvisoRestablecimiento({ instante, onEntendido }: { instante: string; onEntendido: () => Promise<void> }): React.JSX.Element {
+  const [error, setError] = useState<string | null>(null)
+  const fecha = new Date(instante)
+  const entendido = async (): Promise<void> => {
+    const r = await window.api.acceso.avisoVisto()
+    if (!r.ok) return setError(r.error)
+    await onEntendido()
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div role="alertdialog" aria-modal="true" aria-labelledby="titulo-aviso-soporte" className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+        <h2 id="titulo-aviso-soporte" className="mb-3 text-2xl font-bold text-amber-900">
+          ⚠ Acceso restablecido por soporte
+        </h2>
+        <p className="text-lg">
+          El acceso de su cuenta fue restablecido por soporte técnico el {formatearFecha(fecha)} a las {formatearHora(fecha)}. Si usted no
+          lo pidió, comuníquese con su técnico.
+        </p>
+        {error && <p className="mt-2 text-lg font-semibold text-red-700">{error}</p>}
+        <div className="mt-5 flex justify-end">
+          <Boton onClick={() => void entendido()} autoFocus>
+            Entendido
+          </Boton>
+        </div>
+      </div>
+    </div>
   )
 }

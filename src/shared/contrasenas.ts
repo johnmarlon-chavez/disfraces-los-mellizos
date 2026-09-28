@@ -100,6 +100,14 @@ export interface EstadoAcceso {
   sesion: SesionInfo | null
   /** Tiempo sin actividad tras el que se cierra la sesión de la dueña. */
   inactividadMs: number
+  /** Solo en la sesión de la dueña: instante del restablecimiento por soporte que aún no vio. */
+  avisoRestablecido: string | null
+}
+
+/** Para Configuración: si el técnico definió la clave de soporte y cuándo se usó por última vez. */
+export interface ResumenSoporte {
+  claveDefinida: boolean
+  ultimoRestablecimiento: string | null
 }
 
 export interface DatosPrimerUso {

@@ -86,3 +86,15 @@ export function hoyEnLima(ahora: Date = new Date()): string {
   const { dia, mes, anio } = partesEnLima(ahora)
   return `${anio}-${mes}-${dia}`
 }
+
+/** Hora de un instante en Lima, "hh:mm" en formato de 24 horas. */
+export function formatearHora(instante: Date): string {
+  const partes = new Intl.DateTimeFormat('en-GB', {
+    timeZone: ZONA_HORARIA,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(instante)
+  const valor = (tipo: string): string => partes.find((p) => p.type === tipo)?.value ?? ''
+  return `${valor('hour')}:${valor('minute')}`
+}

@@ -26,7 +26,14 @@ const api: ApiDisfraces = {
     verificarDuena: canal('acceso:verificarDuena'),
     cambiarMiContrasena: canal('acceso:cambiarMiContrasena'),
     cambiarContrasenaTrabajadores: canal('acceso:cambiarContrasenaTrabajadores'),
-    nuevoCodigo: canal('acceso:nuevoCodigo')
+    nuevoCodigo: canal('acceso:nuevoCodigo'),
+    avisoVisto: canal('acceso:avisoVisto'),
+    resumenSoporte: canal('acceso:resumenSoporte')
+  },
+  soporte: {
+    estado: canal('soporte:estado'),
+    definirClave: canal('soporte:definirClave'),
+    restablecer: canal('soporte:restablecer')
   },
   modelos: {
     listar: canal('modelos:listar'),

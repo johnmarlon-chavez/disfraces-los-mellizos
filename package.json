@@ -17,7 +17,8 @@
     "seed": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js",
     "lint": "eslint .",
     "seed:reiniciar": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js --reiniciar",
-    "restablecer-duena": "electron-vite build && node scripts/con-electron.mjs electron . --restablecer-duena"
+    "restablecer-duena": "electron-vite build && node scripts/con-electron.mjs electron . --restablecer-duena",
+    "definir-clave-soporte": "electron-vite build && node scripts/con-electron.mjs electron . --definir-clave-soporte"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

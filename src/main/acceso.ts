@@ -69,7 +69,8 @@ export function crearServicioAcceso(db: Database.Database, opciones: OpcionesAcc
       return {
         hayCuentas: usuarios.hayCuentas(db),
         sesion: sesion ? { cuenta: usuarios.cuentaDeSesion(sesion), nombre: NOMBRE_CUENTA[usuarios.cuentaDeSesion(sesion)] } : null,
-        inactividadMs
+        inactividadMs,
+        avisoRestablecido: sesion?.rol === 'admin' ? usuarios.avisoRestablecimiento(db) : null
       }
     },
 

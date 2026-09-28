@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import type { ResumenSoporte } from '../../../shared/contrasenas'
 import type { Configuracion as DatosConfiguracion, InfoApp, ModoMora } from '../../../shared/ipc'
-import { formatearSoles } from '../../../shared/formato'
+import { formatearFecha, formatearHora, formatearSoles } from '../../../shared/formato'
 import { llamar, mensajeDe } from '../api'
 import { CodigoGrande } from '../componentes/acceso/AsistentePrimerUso'
 import CampoContrasena, { errorDeNueva } from '../componentes/acceso/CampoContrasena'
@@ -13,6 +14,7 @@ import Dialogo from '../componentes/ui/Dialogo'
 interface Estado {
   config: DatosConfiguracion
   info: InfoApp
+  soporte: ResumenSoporte
 }
 
 function Tarjeta({ titulo, children }: { titulo: string; children: ReactNode }): React.JSX.Element {
@@ -286,11 +288,12 @@ export default function Configuracion(): React.JSX.Element {
 
   useEffect(() => {
     let vigente = true
-    Promise.all([window.api.config.obtener(), window.api.app.info()]).then(([config, info]) => {
+    Promise.all([window.api.config.obtener(), window.api.app.info(), window.api.acceso.resumenSoporte()]).then(([config, info, soporte]) => {
       if (!vigente) return
       if (!config.ok) return setError(config.error)
       if (!info.ok) return setError(info.error)
-      setEstado({ config: config.datos, info: info.datos })
+      if (!soporte.ok) return setError(soporte.error)
+      setEstado({ config: config.datos, info: info.datos, soporte: soporte.datos })
     })
     return () => {
       vigente = false
@@ -332,6 +335,20 @@ export default function Configuracion(): React.JSX.Element {
               <dd className="break-all">{estado.info.carpetaDatos}</dd>
               <dt className="font-semibold">Versión del programa</dt>
               <dd>{estado.info.version}</dd>
+              <dt className="font-semibold">Clave de soporte</dt>
+              <dd>
+                {estado.soporte.claveDefinida ? (
+                  'Definida por su técnico'
+                ) : (
+                  <span className="font-semibold text-amber-800">No definida: pida a su técnico que la defina.</span>
+                )}
+              </dd>
+              <dt className="font-semibold">Último restablecimiento por soporte</dt>
+              <dd>
+                {estado.soporte.ultimoRestablecimiento
+                  ? `${formatearFecha(new Date(estado.soporte.ultimoRestablecimiento))} a las ${formatearHora(new Date(estado.soporte.ultimoRestablecimiento))}`
+                  : 'Nunca'}
+              </dd>
             </dl>
           </Tarjeta>
         </>

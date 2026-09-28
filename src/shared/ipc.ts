@@ -2,7 +2,8 @@
 // Cada canal declara sus argumentos y su resultado; el preload y los handlers
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
 import type { AutorizacionDuena } from './autorizacion'
-import type { Cuenta, DatosPrimerUso, EstadoAcceso } from './contrasenas'
+import type { Cuenta, DatosPrimerUso, EstadoAcceso, ResumenSoporte } from './contrasenas'
+import type { EstadoSoporte } from './soporte'
 import type {
   CalendarioOcupacion,
   DatosInicio,
@@ -101,6 +102,13 @@ export interface CanalesIpc {
   'acceso:cambiarMiContrasena': { args: [actual: string, nueva: string]; resultado: void }
   'acceso:cambiarContrasenaTrabajadores': { args: [nueva: string]; resultado: void }
   'acceso:nuevoCodigo': { args: [contrasena: string]; resultado: string }
+  'acceso:avisoVisto': { args: []; resultado: void }
+  'acceso:resumenSoporte': { args: []; resultado: ResumenSoporte }
+
+  // Solo existen en la ventana de soporte (--restablecer-duena, --definir-clave-soporte).
+  'soporte:estado': { args: []; resultado: EstadoSoporte }
+  'soporte:definirClave': { args: [actual: string | null, nueva: string]; resultado: void }
+  'soporte:restablecer': { args: [clave: string]; resultado: string }
 
   'modelos:listar': { args: []; resultado: ResumenModelo[] }
   'modelos:obtener': { args: [id: number]; resultado: FichaModelo }
@@ -227,6 +235,13 @@ export interface ApiDisfraces {
     cambiarMiContrasena: Metodo<'acceso:cambiarMiContrasena'>
     cambiarContrasenaTrabajadores: Metodo<'acceso:cambiarContrasenaTrabajadores'>
     nuevoCodigo: Metodo<'acceso:nuevoCodigo'>
+    avisoVisto: Metodo<'acceso:avisoVisto'>
+    resumenSoporte: Metodo<'acceso:resumenSoporte'>
+  }
+  soporte: {
+    estado: Metodo<'soporte:estado'>
+    definirClave: Metodo<'soporte:definirClave'>
+    restablecer: Metodo<'soporte:restablecer'>
   }
   modelos: {
     listar: Metodo<'modelos:listar'>

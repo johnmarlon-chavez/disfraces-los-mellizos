@@ -7,7 +7,8 @@ export interface AppDePrueba {
   app: ElectronApplication
   ventana: Page
   carpetaDatos: string
-  cerrar: () => Promise<void>
+  /** Cierra la app y borra la carpeta de datos (salvo `conservarDatos`, para volver a abrirla). */
+  cerrar: (conservarDatos?: boolean) => Promise<void>
 }
 
 export const CONTRASENA_DUENA = 'mi gato come pan 7'
@@ -22,16 +23,20 @@ export interface OpcionesLanzar {
   sesion?: 'duena' | 'trabajadores' | null
   /** Tiempo de inactividad de la dueña; por defecto una hora para que no interfiera con las pruebas. */
   inactividadMs?: number
+  /** Reutiliza una carpeta de datos (de un lanzamiento anterior cerrado con `conservarDatos`). */
+  carpetaDatos?: string
+  /** Argumentos extra, por ejemplo '--restablecer-duena'. */
+  args?: string[]
 }
 
 /** Abre la app compilada con una carpeta de datos temporal y vacía. */
 export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePrueba> {
-  const { cuentas = true, sesion = 'duena', inactividadMs = 60 * 60_000 } = opciones
-  const carpetaDatos = mkdtempSync(join(tmpdir(), 'disfraces-e2e-'))
+  const { cuentas = true, sesion = 'duena', inactividadMs = 60 * 60_000, args = [] } = opciones
+  const carpetaDatos = opciones.carpetaDatos ?? mkdtempSync(join(tmpdir(), 'disfraces-e2e-'))
   // Terminales como la de VS Code definen ELECTRON_RUN_AS_NODE; con eso Electron no abriría ventanas.
   const { ELECTRON_RUN_AS_NODE: _, ...entorno } = process.env
   const app = await electron.launch({
-    args: ['.'],
+    args: ['.', ...args],
     env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs) } as Record<string, string>
   })
   const ventana = await app.firstWindow()
@@ -59,9 +64,9 @@ export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePru
     app,
     ventana,
     carpetaDatos,
-    cerrar: async () => {
+    cerrar: async (conservarDatos = false) => {
       await app.close()
-      rmSync(carpetaDatos, { recursive: true, force: true })
+      if (!conservarDatos) rmSync(carpetaDatos, { recursive: true, force: true })
     }
   }
 }

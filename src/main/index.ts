@@ -4,22 +4,35 @@ import type Database from 'better-sqlite3'
 import { NOMBRE_TIENDA } from '../shared/constantes'
 import { crearServicioAcceso } from './acceso'
 import { abrirBaseDeDatos } from './db/conexion'
-import { hayCuentas, restablecerCodigoDuena } from './db/usuarios'
+import { registrarAperturaSoporte } from './db/soporte'
 import { mensajeParaUsuario } from './errores'
 import { atenderProtocoloFotos, registrarEsquemaFotos } from './fotos'
-import { registrarManejadores } from './ipc'
+import { registrarManejadores, registrarManejadoresSoporte } from './ipc'
 import { obtenerRutas } from './rutas'
 
 let db: Database.Database | null = null
 let ventana: BrowserWindow | null = null
 
-function crearVentana(): BrowserWindow {
+/**
+ * Herramientas de soporte (con el programa cerrado), protegidas por la clave de soporte:
+ * - "<programa>.exe --definir-clave-soporte": el técnico define (o cambia) la clave al instalar.
+ * - "<programa>.exe --restablecer-duena": con la clave, código de recuperación nuevo para la dueña.
+ * Abren una ventana pequeña que solo tiene los canales de soporte; el resto del programa no existe.
+ */
+type ModoSoporte = 'restablecer' | 'definir-clave'
+const modoSoporte: ModoSoporte | null = process.argv.includes('--restablecer-duena')
+  ? 'restablecer'
+  : process.argv.includes('--definir-clave-soporte')
+    ? 'definir-clave'
+    : null
+
+function crearVentana(soporte: ModoSoporte | null = null): BrowserWindow {
   const win = new BrowserWindow({
-    title: NOMBRE_TIENDA,
-    width: 1366,
-    height: 768,
-    minWidth: 1024,
-    minHeight: 700,
+    title: soporte ? `${NOMBRE_TIENDA} · Soporte` : NOMBRE_TIENDA,
+    width: soporte ? 820 : 1366,
+    height: soporte ? 680 : 768,
+    minWidth: soporte ? 640 : 1024,
+    minHeight: soporte ? 560 : 700,
     show: false,
     backgroundColor: '#ffffff',
     webPreferences: {
@@ -31,7 +44,7 @@ function crearVentana(): BrowserWindow {
   })
 
   win.once('ready-to-show', () => {
-    win.maximize()
+    if (!soporte) win.maximize()
     win.show()
   })
 
@@ -44,10 +57,11 @@ function crearVentana(): BrowserWindow {
     if (url !== win.webContents.getURL()) evento.preventDefault()
   })
 
+  const hash = soporte ? `/soporte/${soporte}` : ''
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
-    void win.loadURL(process.env.ELECTRON_RENDERER_URL)
+    void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}${hash ? `#${hash}` : ''}`)
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadFile(join(__dirname, '../renderer/index.html'), { hash })
   }
   return win
 }
@@ -63,55 +77,25 @@ function iniciar(): void {
     return
   }
 
+  const info = {
+    nombreTienda: NOMBRE_TIENDA,
+    version: app.getVersion(),
+    carpetaDatos: rutas.carpetaDatos,
+    esDesarrollo: !app.isPackaged
+  }
+  Menu.setApplicationMenu(null)
+  if (modoSoporte) {
+    registrarAperturaSoporte(db, modoSoporte === 'restablecer' ? 'restablecer_duena' : 'definir_clave')
+    registrarManejadoresSoporte(db, info)
+    ventana = crearVentana(modoSoporte)
+    return
+  }
+
   atenderProtocoloFotos(rutas.fotos)
   // DISFRACES_INACTIVIDAD_MS: solo para las pruebas E2E (no esperar 10 minutos reales).
   const inactividadMs = Number(process.env.DISFRACES_INACTIVIDAD_MS) || undefined
-  registrarManejadores(
-    db,
-    {
-      nombreTienda: NOMBRE_TIENDA,
-      version: app.getVersion(),
-      carpetaDatos: rutas.carpetaDatos,
-      esDesarrollo: !app.isPackaged
-    },
-    rutas,
-    crearServicioAcceso(db, { inactividadMs })
-  )
-
-  Menu.setApplicationMenu(null)
+  registrarManejadores(db, info, rutas, crearServicioAcceso(db, { inactividadMs }))
   ventana = crearVentana()
-}
-
-/**
- * Herramienta de soporte: "<programa>.exe --restablecer-duena" (con el programa cerrado).
- * Para cuando la dueña perdió su contraseña y su código de recuperación: genera un código
- * nuevo, lo muestra y cierra. No cambia ninguna contraseña ni ningún dato del negocio.
- */
-async function restablecerDuena(): Promise<void> {
-  const titulo = `${NOMBRE_TIENDA} · Soporte`
-  try {
-    const base = abrirBaseDeDatos(obtenerRutas().baseDeDatos)
-    try {
-      if (!hayCuentas(base)) {
-        await dialog.showMessageBox({ type: 'info', title: titulo, message: 'Todavía no se crearon las cuentas. Abra el programa normalmente.' })
-        return
-      }
-      const codigo = restablecerCodigoDuena(base)
-      await dialog.showMessageBox({
-        type: 'warning',
-        title: titulo,
-        message: `Código de recuperación nuevo:\n\n${codigo}`,
-        detail:
-          'Anótelo en papel. Abra el programa, elija "Dueña" y luego "¿Olvidó su contraseña?", ' +
-          'escriba este código y elija una contraseña nueva. El código anterior ya no sirve.'
-      })
-    } finally {
-      base.close()
-    }
-  } catch (error) {
-    console.error('[soporte] No se pudo restablecer:', error)
-    dialog.showErrorBox(titulo, `No se pudo generar el código.\n\n${mensajeParaUsuario(error)}`)
-  }
 }
 
 // Con una carpeta de datos propia (pruebas E2E), también userData va aparte: así el bloqueo de
@@ -120,7 +104,7 @@ if (process.env.DISFRACES_DATOS_DIR) app.setPath('userData', join(process.env.DI
 
 // Una sola instancia: dos procesos escribiendo la misma base sería un riesgo.
 if (!app.requestSingleInstanceLock()) {
-  if (process.argv.includes('--restablecer-duena')) {
+  if (modoSoporte) {
     // Con el programa abierto no se puede: avisar en vez de salir sin decir nada.
     void app.whenReady().then(() => {
       dialog.showErrorBox(NOMBRE_TIENDA, 'Primero cierre el programa y vuelva a ejecutar la herramienta.')
@@ -129,11 +113,6 @@ if (!app.requestSingleInstanceLock()) {
   } else {
     app.quit()
   }
-} else if (process.argv.includes('--restablecer-duena')) {
-  void app.whenReady().then(async () => {
-    await restablecerDuena()
-    app.exit(0)
-  })
 } else {
   app.on('second-instance', () => {
     if (!ventana) return

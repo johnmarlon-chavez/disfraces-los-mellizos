@@ -31,6 +31,9 @@ let rondas = 10
 export function establecerRondasBcrypt(n: number): void {
   rondas = n
 }
+export function rondasBcrypt(): number {
+  return rondas
+}
 
 interface FilaUsuario {
   id: number
@@ -246,23 +249,52 @@ export function nuevoCodigoRecuperacion(db: Database.Database, sesion: Sesion | 
 /**
  * Herramienta de soporte (--restablecer-duena), para cuando la dueña perdió la contraseña y el código:
  * genera un código nuevo y desbloquea su cuenta. No toca ninguna contraseña; con ese código la dueña
- * elige una nueva desde "¿Olvidó su contraseña?".
+ * elige una nueva desde "¿Olvidó su contraseña?". Deja pendiente el aviso para la dueña.
+ * Llamar solo desde db/soporte.ts, después de verificar la clave de soporte.
  */
-export function restablecerCodigoDuena(db: Database.Database): string {
+export function restablecerCodigoDuena(db: Database.Database, ahora = new Date()): string {
   filaObligatoria(db, 'duena')
-  return guardarCodigoNuevo(db, null, 'codigo_restablecido_soporte')
+  return guardarCodigoNuevo(db, null, 'codigo_restablecido_soporte', ahora.toISOString())
 }
 
-function guardarCodigoNuevo(db: Database.Database, sesion: Sesion | null, accion: string): string {
+function guardarCodigoNuevo(db: Database.Database, sesion: Sesion | null, accion: string, restablecidoEn: string | null = null): string {
   const codigo = generarCodigoRecuperacion()
   const f = filaObligatoria(db, 'duena')
   db.transaction(() => {
     db.prepare(
       'UPDATE usuarios SET codigo_recuperacion_hash = ?, intentos_fallidos = 0, bloqueos = 0, bloqueado_hasta = NULL WHERE id = ?'
     ).run(hash(normalizarCodigo(codigo)), f.id)
+    if (restablecidoEn) db.prepare('UPDATE usuarios SET restablecido_por_soporte_en = ? WHERE id = ?').run(restablecidoEn, f.id)
     registrarAuditoria(db, sesion, accion, 'usuarios', f.id, {})
   }).immediate()
   return codigo
+}
+
+/** Instante del restablecimiento por soporte que la dueña todavía no vio, o null. */
+export function avisoRestablecimiento(db: Database.Database): string | null {
+  const f = db
+    .prepare<[], { en: string | null }>("SELECT restablecido_por_soporte_en AS en FROM usuarios WHERE usuario = 'duena'")
+    .get()
+  return f?.en ?? null
+}
+
+/** La dueña pulsó "Entendido" en el aviso de restablecimiento. */
+export function marcarAvisoRestablecimientoVisto(db: Database.Database, sesion: Sesion | null): void {
+  if (sesion?.rol !== 'admin') throw new ErrorDeNegocio('Solo la dueña puede cerrar este aviso.')
+  const en = avisoRestablecimiento(db)
+  if (!en) return
+  db.transaction(() => {
+    db.prepare("UPDATE usuarios SET restablecido_por_soporte_en = NULL WHERE usuario = 'duena'").run()
+    registrarAuditoria(db, sesion, 'aviso_restablecimiento_visto', 'usuarios', sesion.usuarioId, { restablecidoEn: en })
+  }).immediate()
+}
+
+/** Último restablecimiento por soporte (para mostrarlo siempre en Configuración), o null. */
+export function ultimoRestablecimientoSoporte(db: Database.Database): string | null {
+  const f = db
+    .prepare<[], { fecha: string }>("SELECT fecha FROM auditoria WHERE accion = 'codigo_restablecido_soporte' ORDER BY id DESC LIMIT 1")
+    .get()
+  return f?.fecha ?? null
 }
 
 /** Cuenta de una sesión, para mostrar "Sesión: Dueña". */

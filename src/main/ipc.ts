@@ -9,6 +9,7 @@ import * as disfraces from './db/disfraces'
 import * as entregas from './db/entregas'
 import * as pedidos from './db/pedidos'
 import * as reportes from './db/reportes'
+import * as soporte from './db/soporte'
 import * as usuarios from './db/usuarios'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
@@ -17,16 +18,18 @@ import { obtenerSesion } from './sesion'
 
 type Manejador<K extends NombreCanal> = (...args: ArgsDe<K>) => ResultadoDe<K> | Promise<ResultadoDe<K>>
 
-export function registrarManejadores(db: Database.Database, info: InfoApp, rutas: Rutas, acceso: ServicioAcceso): void {
-  /**
-   * Registra un handler tipado. Antes de ejecutarlo exige el nivel de acceso del canal
-   * (ver logica/nivelesIpc.ts). Los errores se convierten en mensajes para la usuaria.
-   */
-  function manejar<K extends NombreCanal>(canal: K, fn: Manejador<K>): void {
+/**
+ * Devuelve la función que registra handlers tipados. Antes de ejecutar cada uno exige el nivel de
+ * acceso del canal (ver logica/nivelesIpc.ts); sin `acceso` (ventana de soporte) solo pasan los
+ * canales públicos. Los errores se convierten en mensajes para la usuaria.
+ */
+function crearManejar(acceso: ServicioAcceso | null) {
+  return function manejar<K extends NombreCanal>(canal: K, fn: Manejador<K>): void {
     const nivel = nivelDeCanal(canal)
     ipcMain.handle(canal, async (_evento, ...args): Promise<Resultado<ResultadoDe<K>>> => {
       try {
         if (nivel !== 'publico') {
+          if (!acceso) throw new ErrorSinSesion()
           const sesion = acceso.exigirSesion()
           if (nivel === 'duena' && sesion.rol !== 'admin') {
             throw new ErrorDeNegocio(`Solo la dueña puede ${accionDeCanal(canal)}.`)
@@ -40,6 +43,22 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
       }
     })
   }
+}
+
+/**
+ * Ventana de soporte (--restablecer-duena, --definir-clave-soporte): solo estos canales existen.
+ * Todo lo demás del programa queda sin registrar.
+ */
+export function registrarManejadoresSoporte(db: Database.Database, info: InfoApp): void {
+  const manejar = crearManejar(null)
+  manejar('app:info', () => info)
+  manejar('soporte:estado', () => soporte.estadoSoporte(db))
+  manejar('soporte:definirClave', (actual, nueva) => soporte.definirClaveSoporte(db, actual, nueva))
+  manejar('soporte:restablecer', (clave) => soporte.restablecerConClave(db, clave))
+}
+
+export function registrarManejadores(db: Database.Database, info: InfoApp, rutas: Rutas, acceso: ServicioAcceso): void {
+  const manejar = crearManejar(acceso)
 
   manejar('app:info', () => info)
   manejar('config:obtener', () => obtenerConfiguracion(db))
@@ -62,6 +81,11 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
     usuarios.cambiarContrasena(db, obtenerSesion(), 'trabajadores', null, nueva)
   )
   manejar('acceso:nuevoCodigo', (contrasena) => usuarios.nuevoCodigoRecuperacion(db, obtenerSesion(), contrasena))
+  manejar('acceso:avisoVisto', () => usuarios.marcarAvisoRestablecimientoVisto(db, obtenerSesion()))
+  manejar('acceso:resumenSoporte', () => ({
+    claveDefinida: soporte.estadoSoporte(db).claveDefinida,
+    ultimoRestablecimiento: usuarios.ultimoRestablecimientoSoporte(db)
+  }))
 
   manejar('modelos:listar', () => disfraces.listarModelos(db))
   manejar('modelos:obtener', (id) => disfraces.obtenerFicha(db, id))

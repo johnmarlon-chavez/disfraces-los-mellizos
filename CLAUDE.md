@@ -232,13 +232,46 @@ Qué ve cada rol:
 
 ### Soporte: la dueña perdió su contraseña y su código de recuperación
 Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún dato.**
+
+**Clave de soporte.** La herramienta está protegida por una clave que solo conoce el técnico. Sin ella, nadie puede usarla, ni la trabajadora ni ninguna otra persona frente a la laptop.
+- Se guarda solo como hash bcrypt, en la tabla `soporte` de la base de datos. Por eso viaja con los respaldos y sobrevive a reinstalar o actualizar.
+- Tiene su propio límite de intentos: 5 fallos y luego esperas de 1, 5, 15, 30 y 60 minutos. Ese contador es independiente del de las cuentas.
+- Mientras no esté definida, `--restablecer-duena` no hace nada. Configuración le muestra a la dueña "Clave de soporte: No definida" para que se la pida al técnico.
+
+**Definir la clave de soporte al instalar** (la Fase 9 lo incluirá en el procedimiento de instalación):
+1. Instalar el programa. Puede hacerse antes o después de que la dueña cree sus contraseñas en el asistente.
+2. Con el programa cerrado, ejecutar el `.exe` con `--definir-clave-soporte`, desde "Ejecutar" (Win + R) o una ventana de comandos. Ejemplo (la ruta exacta la fija el instalador de la Fase 9):
+   `"%LOCALAPPDATA%\Programs\Disfraces Los Mellizos\Disfraces Los Mellizos.exe" --definir-clave-soporte`
+3. En la ventana "Definir la clave de soporte", escribir la clave dos veces:
+   - al menos 12 caracteres, con las mismas reglas que las contraseñas;
+   - distinta de la contraseña de la dueña y de la de Trabajadores.
+4. Guardar la clave **fuera de la laptop**, en el gestor de contraseñas del técnico. No anotarla en la tienda ni decírsela a nadie.
+- Para cambiarla más adelante se usa la misma herramienta, que entonces pide la clave actual. Así nadie puede reemplazarla para usar la herramienta.
+- En desarrollo: `npm run definir-clave-soporte`.
+
+**Restablecer el acceso de la dueña:**
 1. Cerrar el programa si está abierto; si está abierto, la herramienta avisa y no hace nada.
 2. Ejecutar el programa instalado con el parámetro `--restablecer-duena`: desde "Ejecutar" (Win + R) o una ventana de comandos, con la ruta del `.exe` entre comillas. Ejemplo (la ruta exacta la fija el instalador de la Fase 9):
    `"%LOCALAPPDATA%\Programs\Disfraces Los Mellizos\Disfraces Los Mellizos.exe" --restablecer-duena`
-3. Aparece una ventana con un **código de recuperación nuevo**. La dueña lo anota en papel. El código anterior deja de servir y su cuenta queda desbloqueada. La herramienta **no cambia ninguna contraseña** ni ningún otro dato.
+3. Escribir la **clave de soporte**. Con la clave correcta aparece un **código de recuperación nuevo**. La dueña lo anota en papel. El código anterior deja de servir y su cuenta queda desbloqueada. La herramienta **no cambia ninguna contraseña** ni ningún otro dato.
 4. La dueña abre el programa, elige "Dueña" → "¿Olvidó su contraseña?", escribe el código y elige una contraseña nueva. Luego anota el código nuevo que se le muestra.
+5. Al ingresar, la dueña ve un aviso: "El acceso de su cuenta fue restablecido por soporte técnico el dd/mm/aaaa a las hh:mm. Si usted no lo pidió, comuníquese con su técnico.", con el botón "Entendido".
+   - Se muestra en cada ingreso de la dueña hasta que lo pulse; no se cierra con Escape.
+   - Configuración muestra siempre la fecha del último restablecimiento por soporte.
 - En desarrollo: `npm run restablecer-duena` (usa `Documentos\SistemaDisfraces-dev\`).
 - Queda registrado en la auditoría como `codigo_restablecido_soporte`.
+
+**Auditoría de soporte** (entidad `soporte`, sin usuario). Cada uso queda registrado, con éxito o no:
+- `soporte_herramienta_abierta`: cada vez que se abre una herramienta;
+- `soporte_clave_definida`, `soporte_clave_cambiada`;
+- `soporte_clave_incorrecta`, `soporte_bloqueado`, `soporte_intento_bloqueado`;
+- `soporte_sin_clave`: intento sin clave definida;
+- `codigo_restablecido_soporte`;
+- `aviso_restablecimiento_visto`: cuando la dueña pulsa "Entendido".
+
+**Cómo está hecho:**
+- Las herramientas abren una ventana pequeña (`#/soporte/restablecer` o `#/soporte/definir-clave`) en la que el main registra solo los canales `soporte:*` (`registrarManejadoresSoporte`); el resto del programa no existe en ese modo.
+- En la app normal, los canales `soporte:*` no están registrados.
 
 ## Respaldos
 - Al cerrar la app, respaldar en la carpeta de respaldo configurada (por defecto una carpeta sincronizada con Google Drive o OneDrive), conservando los últimos 30 respaldos con fecha en el nombre.
@@ -274,6 +307,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 | `npm run typecheck` | Verificación de tipos (main/preload y renderer). |
 | `npm run lint` | ESLint. |
 | `npm run restablecer-duena` | Herramienta de soporte en desarrollo: código de recuperación nuevo para la dueña (ver "Soporte" en Seguridad). Cerrar antes la app. |
+| `npm run definir-clave-soporte` | Herramienta de soporte en desarrollo: definir o cambiar la clave de soporte. Cerrar antes la app. |
 | `npm run build` | Compila a `out/`. |
 | `npm start` | Ejecuta la versión compilada. |
 
@@ -289,6 +323,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `{ cuentas: false }` para probar el asistente;
   - `{ sesion: 'trabajadores' | null }` para abrir otra sesión o ninguna;
   - `{ inactividadMs }`, que usa la variable `DISFRACES_INACTIVIDAD_MS` (por defecto una hora en las pruebas, para no cortar sesiones).
+  - `{ carpetaDatos, args }` y `cerrar(true)` para volver a abrir la misma carpeta, por ejemplo con `--restablecer-duena` (ver `tests/e2e/soporte.spec.ts`).
 - En las pruebas unitarias, `establecerRondasBcrypt(4)` acelera bcrypt.
 - El seed crea también historia de los últimos meses (devueltos, con daños, cancelado, con deuda, vencido, no recogido) usando las funciones reales con un "hoy" en el pasado, y fecha los pagos en su día. Para probarlo sin tocar la base de desarrollo: `DISFRACES_DATOS_DIR=<carpeta>-dev npx electron out/main/seed.js` (el nombre de la carpeta debe terminar en `-dev`).
 - Electron arranca con `--lang=es-PE` (Chromium lo sirve como `es-419`) para que los campos de fecha muestren dd/mm/aaaa.
@@ -306,6 +341,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
     - **Hecho (Fase 7):** la sesión la abre y la cierra `acceso.ts`. El IPC no deja pasar nada sin sesión, así que `null` solo llega en las pruebas y en el seed.
   - `acceso.ts` — servicio de sesión: primer uso, ingreso, salida, recuperación y cierre por inactividad de la dueña. Registra el verificador de la contraseña de la dueña.
   - `db/usuarios.ts` — cuentas: creación única, ingreso con contador por cuenta, recuperación, cambios de contraseña, código nuevo y `restablecerCodigoDuena` (herramienta de soporte).
+  - `db/soporte.ts` — clave de soporte: definición, verificación con su propio contador y auditoría de cada uso, y `restablecerConClave`, el único camino hacia `restablecerCodigoDuena`. Aviso pendiente en `usuarios.restablecido_por_soporte_en` (migración 010).
   - `logica/acceso.ts` — código de recuperación, esperas del bloqueo y control de inactividad (puro).
   - `logica/nivelesIpc.ts` — nivel de acceso de cada canal.
   - `fotos.ts` — diálogo, reducción a 1200 px y protocolo `fotos://archivo/<nombre>`, que solo sirve archivos de la carpeta de fotos.
@@ -317,6 +353,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - `src/renderer/src/componentes/acceso/` — gestión de la sesión en el renderer:
   - `ProveedorSesion` / `useSesion()` decide qué se muestra: el asistente, la pantalla de ingreso o la app. Al cerrar la sesión desmonta la app entera, diálogos incluidos, y vigila la inactividad de la dueña.
   - `CampoContrasena` tiene el botón 👁 para ver la contraseña, el aviso de Bloq Mayús y el indicador de seguridad.
+  - `PantallaSoporte`: la ventana de las herramientas de soporte. `main.tsx` la muestra en lugar de la app cuando el hash es `#/soporte/...`.
   - Menú y rutas filtrados por rol: Reportes y Configuración no existen para Trabajadores.
 
 ## Datos pendientes de confirmar con la dueña

@@ -11,14 +11,20 @@ const PUBLICOS: ReadonlySet<NombreCanal> = new Set<NombreCanal>([
   'acceso:crearCuentas',
   'acceso:ingresar',
   'acceso:recuperar',
-  'acceso:salir'
+  'acceso:salir',
+  // Solo se registran en la ventana de soporte, que se protege con la clave de soporte.
+  'soporte:estado',
+  'soporte:definirClave',
+  'soporte:restablecer'
 ])
 
 const SOLO_DUENA: ReadonlySet<NombreCanal> = new Set<NombreCanal>([
   'config:actualizar',
   'acceso:cambiarMiContrasena',
   'acceso:cambiarContrasenaTrabajadores',
-  'acceso:nuevoCodigo'
+  'acceso:nuevoCodigo',
+  'acceso:avisoVisto',
+  'acceso:resumenSoporte'
 ])
 
 export function nivelDeCanal(canal: NombreCanal): NivelAcceso {
@@ -31,5 +37,6 @@ export function nivelDeCanal(canal: NombreCanal): NivelAcceso {
 export function accionDeCanal(canal: NombreCanal): string {
   if (canal.startsWith('reportes:')) return 'ver los reportes'
   if (canal === 'config:actualizar') return 'cambiar la configuración'
+  if (canal === 'acceso:avisoVisto' || canal === 'acceso:resumenSoporte') return 'ver los avisos de soporte'
   return 'cambiar las contraseñas'
 }
