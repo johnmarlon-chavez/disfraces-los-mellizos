@@ -8,6 +8,7 @@ import { migracion005 } from './005_pedidos_y_confeccion'
 import { migracion006 } from './006_entrega_y_devolucion'
 import { migracion007 } from './007_nombre_tienda'
 import { migracion008 } from './008_nombre_tienda_original'
+import { migracion009 } from './009_usuarios_acceso'
 
 export interface Migracion {
   version: number
@@ -34,7 +35,8 @@ export const MIGRACIONES: readonly Migracion[] = [
   migracion005,
   migracion006,
   migracion007,
-  migracion008
+  migracion008,
+  migracion009
 ]
 
 export function versionActual(db: Database.Database): number {

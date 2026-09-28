@@ -2,6 +2,7 @@
 // Cada canal declara sus argumentos y su resultado; el preload y los handlers
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
 import type { AutorizacionDuena } from './autorizacion'
+import type { Cuenta, DatosPrimerUso, EstadoAcceso } from './contrasenas'
 import type {
   CalendarioOcupacion,
   DatosInicio,
@@ -77,11 +78,29 @@ export interface Configuracion {
   nombreTienda: string
 }
 
-export type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string }
+/** Lo que la dueña puede cambiar desde Configuración. */
+export type DatosConfiguracion = Pick<Configuracion, 'moraPorDia' | 'modoMora' | 'diasMargenLavado' | 'precioPorDia'>
+
+/** sesionCerrada: no hay sesión (o se cerró por inactividad); el renderer vuelve a la pantalla de ingreso. */
+export type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string; sesionCerrada?: true }
 
 export interface CanalesIpc {
   'app:info': { args: []; resultado: InfoApp }
   'config:obtener': { args: []; resultado: Configuracion }
+  'config:actualizar': { args: [datos: DatosConfiguracion]; resultado: void }
+
+  'acceso:estado': { args: []; resultado: EstadoAcceso }
+  'acceso:prepararCodigo': { args: []; resultado: string }
+  'acceso:crearCuentas': { args: [datos: DatosPrimerUso]; resultado: void }
+  'acceso:ingresar': { args: [cuenta: Cuenta, contrasena: string]; resultado: void }
+  /** Devuelve el código de recuperación nuevo (el usado deja de servir). */
+  'acceso:recuperar': { args: [codigo: string, nuevaContrasena: string]; resultado: string }
+  'acceso:salir': { args: []; resultado: void }
+  'acceso:actividad': { args: []; resultado: void }
+  'acceso:verificarDuena': { args: [contrasena: string]; resultado: void }
+  'acceso:cambiarMiContrasena': { args: [actual: string, nueva: string]; resultado: void }
+  'acceso:cambiarContrasenaTrabajadores': { args: [nueva: string]; resultado: void }
+  'acceso:nuevoCodigo': { args: [contrasena: string]; resultado: string }
 
   'modelos:listar': { args: []; resultado: ResumenModelo[] }
   'modelos:obtener': { args: [id: number]; resultado: FichaModelo }
@@ -195,7 +214,20 @@ type Metodo<K extends NombreCanal> = (...args: ArgsDe<K>) => Promise<Resultado<R
 /** API expuesta en `window.api` por el preload. */
 export interface ApiDisfraces {
   app: { info: Metodo<'app:info'> }
-  config: { obtener: Metodo<'config:obtener'> }
+  config: { obtener: Metodo<'config:obtener'>; actualizar: Metodo<'config:actualizar'> }
+  acceso: {
+    estado: Metodo<'acceso:estado'>
+    prepararCodigo: Metodo<'acceso:prepararCodigo'>
+    crearCuentas: Metodo<'acceso:crearCuentas'>
+    ingresar: Metodo<'acceso:ingresar'>
+    recuperar: Metodo<'acceso:recuperar'>
+    salir: Metodo<'acceso:salir'>
+    actividad: Metodo<'acceso:actividad'>
+    verificarDuena: Metodo<'acceso:verificarDuena'>
+    cambiarMiContrasena: Metodo<'acceso:cambiarMiContrasena'>
+    cambiarContrasenaTrabajadores: Metodo<'acceso:cambiarContrasenaTrabajadores'>
+    nuevoCodigo: Metodo<'acceso:nuevoCodigo'>
+  }
   modelos: {
     listar: Metodo<'modelos:listar'>
     obtener: Metodo<'modelos:obtener'>

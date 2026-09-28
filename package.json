@@ -16,7 +16,8 @@
     "test:e2e": "electron-vite build && playwright test",
     "seed": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js",
     "lint": "eslint .",
-    "seed:reiniciar": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js --reiniciar"
+    "seed:reiniciar": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js --reiniciar",
+    "restablecer-duena": "electron-vite build && node scripts/con-electron.mjs electron . --restablecer-duena"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
@@ -40,6 +41,7 @@
     "vitest": "4.1.11"
   },
   "dependencies": {
+    "bcryptjs": "3.0.3",
     "better-sqlite3": "12.11.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",

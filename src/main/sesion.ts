@@ -13,7 +13,10 @@ type VerificadorContrasenaDuena = (contrasena: string) => boolean
 let sesionActual: Sesion | null = null
 let verificarContrasenaDuena: VerificadorContrasenaDuena | null = null
 
-/** Cuenta que está usando el programa. null mientras no exista el login (fase 7). */
+/**
+ * Cuenta que está usando el programa (la abre y la cierra acceso.ts). null sin sesión: el IPC ya
+ * no deja pasar nada sin sesión, así que null solo llega en pruebas y en el seed.
+ */
 export function obtenerSesion(): Sesion | null {
   return sesionActual
 }
@@ -22,7 +25,7 @@ export function establecerSesion(sesion: Sesion | null): void {
   sesionActual = sesion
 }
 
-/** FASE 7: el login registra aquí cómo verificar la contraseña de la dueña (bcrypt). */
+/** acceso.ts registra aquí cómo verificar la contraseña de la dueña (bcrypt, con su contador de intentos). */
 export function establecerVerificadorDuena(verificador: VerificadorContrasenaDuena | null): void {
   verificarContrasenaDuena = verificador
 }
@@ -32,8 +35,7 @@ export function establecerVerificadorDuena(verificador: VerificadorContrasenaDue
  * entregar con pendientes, rebajar mora...).
  * - Sesión de la dueña: se permite.
  * - Sesión de Trabajadores: se permite solo con la contraseña de la dueña (`autorizacion`).
- * FASE 7: mientras no hay login la sesión es null y se permite todo. Al agregar el login,
- * la sesión nunca será null en uso normal y esta regla se aplicará sola.
+ * - Sin sesión (solo pruebas y seed; el IPC exige sesión): se permite.
  */
 export function exigirDuena(sesion: Sesion | null, accion: string, autorizacion: AutorizacionDuena | null = null): void {
   if (!sesion || sesion.rol === 'admin') return

@@ -10,17 +10,51 @@ export interface AppDePrueba {
   cerrar: () => Promise<void>
 }
 
+export const CONTRASENA_DUENA = 'mi gato come pan 7'
+export const CONTRASENA_TRABAJADORES = 'tienda de la esquina'
+
+export interface OpcionesLanzar {
+  /**
+   * cuentas: crea las cuentas (primer uso) por la API. Por defecto true.
+   * sesion: con qué cuenta queda abierta la app (por defecto la dueña); null = en la pantalla de ingreso.
+   */
+  cuentas?: boolean
+  sesion?: 'duena' | 'trabajadores' | null
+  /** Tiempo de inactividad de la dueña; por defecto una hora para que no interfiera con las pruebas. */
+  inactividadMs?: number
+}
+
 /** Abre la app compilada con una carpeta de datos temporal y vacía. */
-export async function lanzarApp(): Promise<AppDePrueba> {
+export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePrueba> {
+  const { cuentas = true, sesion = 'duena', inactividadMs = 60 * 60_000 } = opciones
   const carpetaDatos = mkdtempSync(join(tmpdir(), 'disfraces-e2e-'))
   // Terminales como la de VS Code definen ELECTRON_RUN_AS_NODE; con eso Electron no abriría ventanas.
   const { ELECTRON_RUN_AS_NODE: _, ...entorno } = process.env
   const app = await electron.launch({
     args: ['.'],
-    env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos } as Record<string, string>
+    env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs) } as Record<string, string>
   })
   const ventana = await app.firstWindow()
   await ventana.waitForLoadState('domcontentloaded')
+  if (cuentas) {
+    await ventana.evaluate(
+      async ([duena, trabajadores, cuenta]) => {
+        const api = (window as unknown as { api: import('../../src/shared/ipc').ApiDisfraces }).api
+        const codigo = await api.acceso.prepararCodigo()
+        if (!codigo.ok) throw new Error(codigo.error)
+        const r = await api.acceso.crearCuentas({ contrasenaDuena: duena, contrasenaTrabajadores: trabajadores, codigoConfirmado: codigo.datos })
+        if (!r.ok) throw new Error(r.error)
+        await api.acceso.salir()
+        if (cuenta) {
+          const i = await api.acceso.ingresar(cuenta, cuenta === 'duena' ? duena : trabajadores)
+          if (!i.ok) throw new Error(i.error)
+        }
+      },
+      [CONTRASENA_DUENA, CONTRASENA_TRABAJADORES, sesion] as const
+    )
+    await ventana.reload()
+    await ventana.waitForLoadState('domcontentloaded')
+  }
   return {
     app,
     ventana,

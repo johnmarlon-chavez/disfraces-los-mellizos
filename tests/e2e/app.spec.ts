@@ -39,7 +39,7 @@ test('el menú lateral navega por todas las secciones', async () => {
 
 test('Configuración muestra datos leídos por IPC desde SQLite', async () => {
   await a.ventana.getByRole('link', { name: 'Configuración' }).click()
-  await expect(a.ventana.getByText('S/ 5.00')).toBeVisible()
+  await expect(a.ventana.getByLabel('Mora por día de retraso')).toHaveValue('5.00')
   await expect(a.ventana.getByText(a.carpetaDatos)).toBeVisible()
 })
 

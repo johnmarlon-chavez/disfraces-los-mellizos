@@ -1,34 +1,67 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { ArgsDe, NombreCanal, Resultado, ResultadoDe, InfoApp } from '../shared/ipc'
-import { mensajeParaUsuario } from './errores'
-import { obtenerConfiguracion } from './db/configuracion'
+import { ErrorSinSesion, type ServicioAcceso } from './acceso'
+import { ErrorDeNegocio, mensajeParaUsuario } from './errores'
+import { actualizarConfiguracion, obtenerConfiguracion } from './db/configuracion'
 import * as clientes from './db/clientes'
 import * as disfraces from './db/disfraces'
 import * as entregas from './db/entregas'
 import * as pedidos from './db/pedidos'
 import * as reportes from './db/reportes'
+import * as usuarios from './db/usuarios'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
-import { exigirDuena, obtenerSesion } from './sesion'
+import { accionDeCanal, nivelDeCanal } from './logica/nivelesIpc'
+import { obtenerSesion } from './sesion'
 
 type Manejador<K extends NombreCanal> = (...args: ArgsDe<K>) => ResultadoDe<K> | Promise<ResultadoDe<K>>
 
-/** Registra un handler tipado. Los errores se convierten en mensajes para la usuaria. */
-function manejar<K extends NombreCanal>(canal: K, fn: Manejador<K>): void {
-  ipcMain.handle(canal, async (_evento, ...args): Promise<Resultado<ResultadoDe<K>>> => {
-    try {
-      return { ok: true, datos: await fn(...(args as ArgsDe<K>)) }
-    } catch (error) {
-      console.error(`[ipc] Error en ${canal}:`, error)
-      return { ok: false, error: mensajeParaUsuario(error) }
-    }
-  })
-}
+export function registrarManejadores(db: Database.Database, info: InfoApp, rutas: Rutas, acceso: ServicioAcceso): void {
+  /**
+   * Registra un handler tipado. Antes de ejecutarlo exige el nivel de acceso del canal
+   * (ver logica/nivelesIpc.ts). Los errores se convierten en mensajes para la usuaria.
+   */
+  function manejar<K extends NombreCanal>(canal: K, fn: Manejador<K>): void {
+    const nivel = nivelDeCanal(canal)
+    ipcMain.handle(canal, async (_evento, ...args): Promise<Resultado<ResultadoDe<K>>> => {
+      try {
+        if (nivel !== 'publico') {
+          const sesion = acceso.exigirSesion()
+          if (nivel === 'duena' && sesion.rol !== 'admin') {
+            throw new ErrorDeNegocio(`Solo la dueña puede ${accionDeCanal(canal)}.`)
+          }
+        }
+        return { ok: true, datos: await fn(...(args as ArgsDe<K>)) }
+      } catch (error) {
+        if (error instanceof ErrorSinSesion) return { ok: false, error: error.message, sesionCerrada: true }
+        if (!(error instanceof ErrorDeNegocio)) console.error(`[ipc] Error en ${canal}:`, error)
+        return { ok: false, error: mensajeParaUsuario(error) }
+      }
+    })
+  }
 
-export function registrarManejadores(db: Database.Database, info: InfoApp, rutas: Rutas): void {
   manejar('app:info', () => info)
   manejar('config:obtener', () => obtenerConfiguracion(db))
+  manejar('config:actualizar', (datos) => actualizarConfiguracion(db, datos, obtenerSesion()))
+
+  manejar('acceso:estado', () => acceso.estado())
+  manejar('acceso:prepararCodigo', () => acceso.prepararCodigo())
+  manejar('acceso:crearCuentas', (datos) => acceso.crearCuentas(datos))
+  manejar('acceso:ingresar', (cuenta, contrasena) => acceso.ingresar(cuenta, contrasena))
+  manejar('acceso:recuperar', (codigo, nueva) => acceso.recuperar(codigo, nueva))
+  manejar('acceso:salir', () => acceso.salir())
+  manejar('acceso:actividad', () => acceso.actividad())
+  manejar('acceso:verificarDuena', (contrasena) => {
+    if (!usuarios.verificarDuena(db, contrasena)) throw new ErrorDeNegocio('La contraseña de la dueña no es correcta.')
+  })
+  manejar('acceso:cambiarMiContrasena', (actual, nueva) =>
+    usuarios.cambiarContrasena(db, obtenerSesion(), 'duena', actual, nueva)
+  )
+  manejar('acceso:cambiarContrasenaTrabajadores', (nueva) =>
+    usuarios.cambiarContrasena(db, obtenerSesion(), 'trabajadores', null, nueva)
+  )
+  manejar('acceso:nuevoCodigo', (contrasena) => usuarios.nuevoCodigoRecuperacion(db, obtenerSesion(), contrasena))
 
   manejar('modelos:listar', () => disfraces.listarModelos(db))
   manejar('modelos:obtener', (id) => disfraces.obtenerFicha(db, id))
@@ -102,21 +135,17 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
   manejar('inicio:datos', () => reportes.datosInicio(db, obtenerSesion()))
   manejar('unidades:liberar', (ids) => disfraces.liberarUnidades(db, ids, obtenerSesion()))
 
-  // Reportes: solo la dueña (con sesión null, mientras no hay login, se permite).
-  const soloDuena = <T,>(fn: () => T): T => {
-    exigirDuena(obtenerSesion(), 'ver los reportes')
-    return fn()
-  }
-  manejar('reportes:ingresos', (periodo) => soloDuena(() => reportes.reporteIngresos(db, periodo)))
-  manejar('reportes:medios', (periodo) => soloDuena(() => reportes.reporteMedios(db, periodo)))
-  manejar('reportes:fuera', () => soloDuena(() => reportes.disfracesFuera(db)))
-  manejar('reportes:vencidos', () => soloDuena(() => reportes.vencidosYNoRecogidos(db)))
+  // Reportes: nivel "duena" (ver logica/nivelesIpc.ts).
+  manejar('reportes:ingresos', (periodo) => reportes.reporteIngresos(db, periodo))
+  manejar('reportes:medios', (periodo) => reportes.reporteMedios(db, periodo))
+  manejar('reportes:fuera', () => reportes.disfracesFuera(db))
+  manejar('reportes:vencidos', () => reportes.vencidosYNoRecogidos(db))
   manejar('reportes:masAlquilados', (periodo, region, evento) =>
-    soloDuena(() => reportes.masAlquilados(db, periodo, region, evento))
+    reportes.masAlquilados(db, periodo, region, evento)
   )
-  manejar('reportes:agrupados', (periodo, por) => soloDuena(() => reportes.alquileresAgrupados(db, periodo, por)))
-  manejar('reportes:confeccion', () => soloDuena(() => reportes.confeccion(db)))
-  manejar('reportes:calendario', (modeloId, mes) => soloDuena(() => reportes.calendarioOcupacion(db, modeloId, mes)))
-  manejar('reportes:descuentos', (periodo) => soloDuena(() => reportes.descuentos(db, periodo)))
-  manejar('reportes:deudas', () => soloDuena(() => reportes.deudas(db)))
+  manejar('reportes:agrupados', (periodo, por) => reportes.alquileresAgrupados(db, periodo, por))
+  manejar('reportes:confeccion', () => reportes.confeccion(db))
+  manejar('reportes:calendario', (modeloId, mes) => reportes.calendarioOcupacion(db, modeloId, mes))
+  manejar('reportes:descuentos', (periodo) => reportes.descuentos(db, periodo))
+  manejar('reportes:deudas', () => reportes.deudas(db))
 }

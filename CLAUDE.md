@@ -199,6 +199,46 @@ Qué ve cada rol:
 - **Autorización de la dueña sin cerrar sesión:** la laptop estará casi siempre con la sesión de Trabajadores. Toda acción "solo para la dueña" (autorizar saldo pendiente, entregar con pendientes, rebajar o perdonar la mora, cancelar lo que no se entregó, dar de baja, reactivar) pide **la contraseña de la dueña en un diálogo en ese momento**, sin cerrar sesión.
   - Ya preparado: en el renderer todas pasan por `useAutorizacionDuena()`; en el main, por `exigirDuena(sesion, accion, autorizacion)`, que acepta la contraseña mediante `establecerVerificadorDuena()`.
   - **Fase 7:** agregar el campo de contraseña al diálogo de `useAutorizacionDuena()` cuando la sesión sea de Trabajadores, y registrar el verificador (bcrypt) al iniciar sesión.
+  - **Hecho (Fase 7):** con la sesión de Trabajadores, el diálogo pide la contraseña de la dueña, la verifica (`acceso:verificarDuena`) y queda abierto para reintentar si es incorrecta. Con la sesión de la dueña es solo una confirmación.
+
+### Acceso (implementado en la Fase 7)
+- **Primer uso, sin contraseñas por defecto:** con la base sin cuentas, la app abre un asistente. En él la dueña elige su contraseña y la de Trabajadores (deben ser distintas) y anota el código de recuperación, que debe volver a escribir para confirmarlo. Las cuentas se crean una sola vez (`usuario` = `duena` / `trabajadores`). El seed no crea cuentas: en desarrollo se usa el asistente.
+- **Contraseñas:** simples pero no triviales (`src/shared/contrasenas.ts`, las mismas reglas en la pantalla y en el main):
+  - mínimo 8 caracteres; se permiten espacios, así que valen frases;
+  - se rechazan secuencias, repeticiones, palabras obvias (contraseña, mellizos, trujillo, el nombre de la cuenta…), fechas y números de menos de 10 cifras;
+  - indicador "Muy fácil / Aceptable / Buena".
+  - Se guardan solo como hash bcrypt (`bcryptjs`, en JS puro, sin compilar).
+- **Código de recuperación** (`XXXX-XXXX-XXXX`, sin 0/O/1/I/L):
+  - se muestra una sola vez para anotarlo en papel y se guarda como hash;
+  - es de un solo uso: al usarlo en "¿Olvidó su contraseña?" (cuenta Dueña) se elige una contraseña nueva y se muestra un código nuevo;
+  - la dueña puede generar otro desde Configuración, pidiendo su contraseña.
+  - Trabajadores no tiene código: la dueña cambia su contraseña desde Configuración sin necesitar la anterior.
+- **Bloqueo por intentos, con un contador separado por cuenta** (los fallos de Trabajadores no bloquean a la dueña, y al revés):
+  - tras 5 fallos, esperas crecientes de 1, 5, 15, 30 y 60 minutos, guardadas en la base (`usuarios.intentos_fallidos`, `bloqueos`, `bloqueado_hasta`);
+  - un ingreso correcto reinicia el contador;
+  - las contraseñas mal escritas en el diálogo de autorización cuentan para el contador de la dueña.
+- **Inactividad:**
+  - La sesión de la dueña se cierra sola tras 10 minutos sin actividad y vuelve a la pantalla de ingreso. Un minuto antes avisa, con cuenta regresiva y el botón "Seguir en la sesión"; mientras el aviso está en pantalla, solo ese botón mantiene la sesión abierta.
+  - La sesión de Trabajadores no se cierra sola.
+  - Se usa un reloj monótono (`performance.now()`), así que no depende de la hora del sistema ni del reloj simulado de las pruebas.
+  - El renderer manda un latido (`acceso:actividad`) cada 15 s como máximo mientras hay actividad; el main también cierra la sesión por su cuenta (límite + 30 s de margen).
+- **IPC con niveles** (`src/main/logica/nivelesIpc.ts`):
+  - `publico`: solo lo que usa la pantalla de ingreso;
+  - `sesion`: el nivel por defecto; exige una sesión abierta;
+  - `duena`: todos los `reportes:*`, `config:actualizar` y los cambios de contraseña y de código.
+  - Sin sesión, el main responde `sesionCerrada` y la interfaz vuelve al ingreso.
+- **Configuración editable (solo la dueña):** mora por día, modo de mora, días de lavado y precio por evento o por día. Se valida en el main y la auditoría (`configuracion_cambiada`) guarda el antes y el después. Los pedidos ya registrados conservan sus precios.
+- **Auditoría de acceso:** `cuentas_creadas`, `inicio_sesion`, `cierre_sesion`, `sesion_cerrada_inactividad`, `cuenta_bloqueada`, `contrasena_cambiada`, `contrasena_recuperada`, `codigo_recuperacion_nuevo` y `codigo_restablecido_soporte`. Nunca se guarda una contraseña ni un código en claro.
+
+### Soporte: la dueña perdió su contraseña y su código de recuperación
+Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún dato.**
+1. Cerrar el programa si está abierto; si está abierto, la herramienta avisa y no hace nada.
+2. Ejecutar el programa instalado con el parámetro `--restablecer-duena`: desde "Ejecutar" (Win + R) o una ventana de comandos, con la ruta del `.exe` entre comillas. Ejemplo (la ruta exacta la fija el instalador de la Fase 9):
+   `"%LOCALAPPDATA%\Programs\Disfraces Los Mellizos\Disfraces Los Mellizos.exe" --restablecer-duena`
+3. Aparece una ventana con un **código de recuperación nuevo**. La dueña lo anota en papel. El código anterior deja de servir y su cuenta queda desbloqueada. La herramienta **no cambia ninguna contraseña** ni ningún otro dato.
+4. La dueña abre el programa, elige "Dueña" → "¿Olvidó su contraseña?", escribe el código y elige una contraseña nueva. Luego anota el código nuevo que se le muestra.
+- En desarrollo: `npm run restablecer-duena` (usa `Documentos\SistemaDisfraces-dev\`).
+- Queda registrado en la auditoría como `codigo_restablecido_soporte`.
 
 ## Respaldos
 - Al cerrar la app, respaldar en la carpeta de respaldo configurada (por defecto una carpeta sincronizada con Google Drive o OneDrive), conservando los últimos 30 respaldos con fecha en el nombre.
@@ -233,6 +273,7 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 | `npm run test:e2e` | Compila y ejecuta las pruebas E2E con Playwright (usa una carpeta de datos temporal). |
 | `npm run typecheck` | Verificación de tipos (main/preload y renderer). |
 | `npm run lint` | ESLint. |
+| `npm run restablecer-duena` | Herramienta de soporte en desarrollo: código de recuperación nuevo para la dueña (ver "Soporte" en Seguridad). Cerrar antes la app. |
 | `npm run build` | Compila a `out/`. |
 | `npm start` | Ejecuta la versión compilada. |
 
@@ -243,6 +284,12 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 - `DISFRACES_DATOS_DIR` cambia la carpeta de datos (lo usan las pruebas E2E).
 - Pruebas E2E con días de retraso: `tests/e2e/entregas.spec.ts` adelanta el reloj de la app (main y ventana) en lugar de manipular la base.
 - Si las pruebas E2E fallan todas con `ECONNRESET`, quedó un Electron abierto (instancia única): cerrarlo y reintentar.
+  - Desde la Fase 7, con `DISFRACES_DATOS_DIR` también `userData` va a esa carpeta, así que el bloqueo de instancia única de las pruebas ya no choca con la app de desarrollo abierta.
+- Pruebas E2E y login: `lanzarApp()` crea las cuentas por la API (contraseñas de prueba en `tests/e2e/ayudante.ts`) y deja abierta la sesión de la dueña. Opciones:
+  - `{ cuentas: false }` para probar el asistente;
+  - `{ sesion: 'trabajadores' | null }` para abrir otra sesión o ninguna;
+  - `{ inactividadMs }`, que usa la variable `DISFRACES_INACTIVIDAD_MS` (por defecto una hora en las pruebas, para no cortar sesiones).
+- En las pruebas unitarias, `establecerRondasBcrypt(4)` acelera bcrypt.
 - El seed crea también historia de los últimos meses (devueltos, con daños, cancelado, con deuda, vencido, no recogido) usando las funciones reales con un "hoy" en el pasado, y fecha los pagos en su día. Para probarlo sin tocar la base de desarrollo: `DISFRACES_DATOS_DIR=<carpeta>-dev npx electron out/main/seed.js` (el nombre de la carpeta debe terminar en `-dev`).
 - Electron arranca con `--lang=es-PE` (Chromium lo sirve como `es-419`) para que los campos de fecha muestren dd/mm/aaaa.
 - En layouts de dos columnas usar `grid-cols-[minmax(0,1fr)_…]`, no `1fr`: con `1fr` el contenido largo desborda a 1366×768.
@@ -256,12 +303,21 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `db/` — conexión, migraciones y acceso a datos; cada escritura en una transacción con su registro en `auditoria`.
   - `ipc.ts` (handlers), `errores.ts` (`ErrorDeNegocio` = mensaje para la usuaria).
   - `sesion.ts` — cuenta actual y `exigirDuena()`. **Fase 7:** hoy la sesión es `null` y se permite todo; al agregar el login, dar de baja y reactivar quedarán solo para la dueña sin cambiar nada más.
+    - **Hecho (Fase 7):** la sesión la abre y la cierra `acceso.ts`. El IPC no deja pasar nada sin sesión, así que `null` solo llega en las pruebas y en el seed.
+  - `acceso.ts` — servicio de sesión: primer uso, ingreso, salida, recuperación y cierre por inactividad de la dueña. Registra el verificador de la contraseña de la dueña.
+  - `db/usuarios.ts` — cuentas: creación única, ingreso con contador por cuenta, recuperación, cambios de contraseña, código nuevo y `restablecerCodigoDuena` (herramienta de soporte).
+  - `logica/acceso.ts` — código de recuperación, esperas del bloqueo y control de inactividad (puro).
+  - `logica/nivelesIpc.ts` — nivel de acceso de cada canal.
   - `fotos.ts` — diálogo, reducción a 1200 px y protocolo `fotos://archivo/<nombre>`, que solo sirve archivos de la carpeta de fotos.
 - `src/preload/` — expone `window.api` según el contrato.
 - `src/renderer/` — React + Tailwind. Componentes base en `componentes/ui/` (Boton, CampoTexto, Dialogo, `useConfirmar()`, `useAvisos()`); usarlos en vez de `confirm()`/`alert()`. Para tallas usar `SelectorTalla` (lista fija + "Otra…") y para regiones `SelectorRegion`.
 - Migraciones en `src/main/db/migraciones/`: agregar un archivo nuevo al final de la lista; nunca editar una migración ya publicada. La versión se guarda en `PRAGMA user_version`. Para reconstruir una tabla (SQLite no permite quitar `NOT NULL` ni cambiar restricciones), marcar la migración con `sinClavesForaneas: true`: el runner desactiva las claves foráneas fuera de la transacción, verifica `foreign_key_check` antes de confirmar y las reactiva siempre (ver `004_clientes_colegios.ts`).
 - `src/renderer/src/componentes/clientes/FormularioCliente.tsx` — formulario de persona o colegio reutilizable (lo usará la pantalla del pedido en la fase 4), con avisos de documento repetido y de colegio parecido. `onUsarExistente(id)` recibe el cliente elegido.
 - `src/renderer/src/memoriaFiltros.ts` — conserva los filtros de cada lista al volver desde una ficha (`VOLVER_CON_FILTROS`).
+- `src/renderer/src/componentes/acceso/` — gestión de la sesión en el renderer:
+  - `ProveedorSesion` / `useSesion()` decide qué se muestra: el asistente, la pantalla de ingreso o la app. Al cerrar la sesión desmonta la app entera, diálogos incluidos, y vigila la inactividad de la dueña.
+  - `CampoContrasena` tiene el botón 👁 para ver la contraseña, el aviso de Bloq Mayús y el indicador de seguridad.
+  - Menú y rutas filtrados por rol: Reportes y Configuración no existen para Trabajadores.
 
 ## Datos pendientes de confirmar con la dueña
 - Monto de la mora por día de retraso

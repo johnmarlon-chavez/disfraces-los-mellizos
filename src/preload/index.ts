@@ -1,13 +1,33 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiDisfraces, ArgsDe, NombreCanal, Resultado, ResultadoDe } from '../shared/ipc'
 
+/** Evento que avisa a la interfaz que no hay sesión (por ejemplo, se cerró por inactividad). */
+const EVENTO_SESION_CERRADA = 'disfraces:sesion-cerrada'
+
 function canal<K extends NombreCanal>(nombre: K) {
-  return (...args: ArgsDe<K>): Promise<Resultado<ResultadoDe<K>>> => ipcRenderer.invoke(nombre, ...args)
+  return async (...args: ArgsDe<K>): Promise<Resultado<ResultadoDe<K>>> => {
+    const r: Resultado<ResultadoDe<K>> = await ipcRenderer.invoke(nombre, ...args)
+    if (!r.ok && r.sesionCerrada) window.dispatchEvent(new Event(EVENTO_SESION_CERRADA))
+    return r
+  }
 }
 
 const api: ApiDisfraces = {
   app: { info: canal('app:info') },
-  config: { obtener: canal('config:obtener') },
+  config: { obtener: canal('config:obtener'), actualizar: canal('config:actualizar') },
+  acceso: {
+    estado: canal('acceso:estado'),
+    prepararCodigo: canal('acceso:prepararCodigo'),
+    crearCuentas: canal('acceso:crearCuentas'),
+    ingresar: canal('acceso:ingresar'),
+    recuperar: canal('acceso:recuperar'),
+    salir: canal('acceso:salir'),
+    actividad: canal('acceso:actividad'),
+    verificarDuena: canal('acceso:verificarDuena'),
+    cambiarMiContrasena: canal('acceso:cambiarMiContrasena'),
+    cambiarContrasenaTrabajadores: canal('acceso:cambiarContrasenaTrabajadores'),
+    nuevoCodigo: canal('acceso:nuevoCodigo')
+  },
   modelos: {
     listar: canal('modelos:listar'),
     obtener: canal('modelos:obtener'),

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router'
 import Layout from './componentes/Layout'
+import { useSesion } from './componentes/acceso/Sesion'
 import Inicio from './paginas/Inicio'
 import Alquileres from './paginas/Alquileres'
 import FichaPedido from './paginas/FichaPedido'
@@ -15,6 +16,7 @@ import Reportes from './paginas/Reportes'
 import Configuracion from './paginas/Configuracion'
 
 export default function App(): React.JSX.Element {
+  const { esDuena } = useSesion()
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -30,8 +32,9 @@ export default function App(): React.JSX.Element {
         <Route path="clientes" element={<Clientes />} />
         <Route path="clientes/nuevo" element={<NuevoCliente />} />
         <Route path="clientes/:id" element={<FichaCliente />} />
-        <Route path="reportes" element={<Reportes />} />
-        <Route path="configuracion" element={<Configuracion />} />
+        {/* Reportes y Configuración: solo la dueña (para Trabajadores no existen y vuelven a Inicio). */}
+        {esDuena && <Route path="reportes" element={<Reportes />} />}
+        {esDuena && <Route path="configuracion" element={<Configuracion />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

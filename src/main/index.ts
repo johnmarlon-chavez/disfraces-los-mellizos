@@ -2,7 +2,9 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, Menu, shell } from 'electron'
 import type Database from 'better-sqlite3'
 import { NOMBRE_TIENDA } from '../shared/constantes'
+import { crearServicioAcceso } from './acceso'
 import { abrirBaseDeDatos } from './db/conexion'
+import { hayCuentas, restablecerCodigoDuena } from './db/usuarios'
 import { mensajeParaUsuario } from './errores'
 import { atenderProtocoloFotos, registrarEsquemaFotos } from './fotos'
 import { registrarManejadores } from './ipc'
@@ -62,6 +64,8 @@ function iniciar(): void {
   }
 
   atenderProtocoloFotos(rutas.fotos)
+  // DISFRACES_INACTIVIDAD_MS: solo para las pruebas E2E (no esperar 10 minutos reales).
+  const inactividadMs = Number(process.env.DISFRACES_INACTIVIDAD_MS) || undefined
   registrarManejadores(
     db,
     {
@@ -70,16 +74,66 @@ function iniciar(): void {
       carpetaDatos: rutas.carpetaDatos,
       esDesarrollo: !app.isPackaged
     },
-    rutas
+    rutas,
+    crearServicioAcceso(db, { inactividadMs })
   )
 
   Menu.setApplicationMenu(null)
   ventana = crearVentana()
 }
 
+/**
+ * Herramienta de soporte: "<programa>.exe --restablecer-duena" (con el programa cerrado).
+ * Para cuando la dueña perdió su contraseña y su código de recuperación: genera un código
+ * nuevo, lo muestra y cierra. No cambia ninguna contraseña ni ningún dato del negocio.
+ */
+async function restablecerDuena(): Promise<void> {
+  const titulo = `${NOMBRE_TIENDA} · Soporte`
+  try {
+    const base = abrirBaseDeDatos(obtenerRutas().baseDeDatos)
+    try {
+      if (!hayCuentas(base)) {
+        await dialog.showMessageBox({ type: 'info', title: titulo, message: 'Todavía no se crearon las cuentas. Abra el programa normalmente.' })
+        return
+      }
+      const codigo = restablecerCodigoDuena(base)
+      await dialog.showMessageBox({
+        type: 'warning',
+        title: titulo,
+        message: `Código de recuperación nuevo:\n\n${codigo}`,
+        detail:
+          'Anótelo en papel. Abra el programa, elija "Dueña" y luego "¿Olvidó su contraseña?", ' +
+          'escriba este código y elija una contraseña nueva. El código anterior ya no sirve.'
+      })
+    } finally {
+      base.close()
+    }
+  } catch (error) {
+    console.error('[soporte] No se pudo restablecer:', error)
+    dialog.showErrorBox(titulo, `No se pudo generar el código.\n\n${mensajeParaUsuario(error)}`)
+  }
+}
+
+// Con una carpeta de datos propia (pruebas E2E), también userData va aparte: así el bloqueo de
+// instancia única no choca con la app abierta de todos los días.
+if (process.env.DISFRACES_DATOS_DIR) app.setPath('userData', join(process.env.DISFRACES_DATOS_DIR, 'electron'))
+
 // Una sola instancia: dos procesos escribiendo la misma base sería un riesgo.
 if (!app.requestSingleInstanceLock()) {
-  app.quit()
+  if (process.argv.includes('--restablecer-duena')) {
+    // Con el programa abierto no se puede: avisar en vez de salir sin decir nada.
+    void app.whenReady().then(() => {
+      dialog.showErrorBox(NOMBRE_TIENDA, 'Primero cierre el programa y vuelva a ejecutar la herramienta.')
+      app.exit(1)
+    })
+  } else {
+    app.quit()
+  }
+} else if (process.argv.includes('--restablecer-duena')) {
+  void app.whenReady().then(async () => {
+    await restablecerDuena()
+    app.exit(0)
+  })
 } else {
   app.on('second-instance', () => {
     if (!ventana) return
