@@ -37,8 +37,11 @@ export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePru
   const carpetaDatos = opciones.carpetaDatos ?? mkdtempSync(join(tmpdir(), 'disfraces-e2e-'))
   // Terminales como la de VS Code definen ELECTRON_RUN_AS_NODE; con eso Electron no abriría ventanas.
   const { ELECTRON_RUN_AS_NODE: _, ...entorno } = process.env
+  // DISFRACES_E2E_EXE: el programa empaquetado (npm run test:instalado); si no, la app compilada.
+  const exe = process.env.DISFRACES_E2E_EXE
   const app = await electron.launch({
-    args: ['.', ...args],
+    ...(exe ? { executablePath: exe } : {}),
+    args: exe ? args : ['.', ...args],
     env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs), DISFRACES_NO_RELANZAR: '1', ...opciones.entornoExtra } as Record<string, string>
   })
   const ventana = await app.firstWindow()
@@ -106,4 +109,22 @@ export async function ventanaMinima(app: ElectronApplication, ventana: Page): Pr
 
 export async function hayDesbordeHorizontal(ventana: Page): Promise<boolean> {
   return ventana.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+}
+
+/**
+ * Ejecuta código sobre la base de una carpeta de datos (con la app cerrada), con el binario de
+ * Electron en modo Node: better-sqlite3 está compilado para Electron. `db` y `bcrypt` quedan a mano.
+ */
+export async function enBase(carpetaDatos: string, codigo: string): Promise<string> {
+  const { spawnSync } = await import('node:child_process')
+  const electronRuta = (await import('electron')).default as unknown as string
+  const script = `
+    const Database = require(${JSON.stringify(join(process.cwd(), 'node_modules', 'better-sqlite3'))})
+    const bcrypt = require(${JSON.stringify(join(process.cwd(), 'node_modules', 'bcryptjs'))})
+    const db = new Database(${JSON.stringify(join(carpetaDatos, 'datos.db'))})
+    try { const r = (() => { ${codigo} })(); if (r !== undefined) console.log(JSON.stringify(r)) } finally { db.close() }
+  `
+  const r = spawnSync(electronRuta, ['-e', script], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' })
+  if (r.status !== 0) throw new Error(r.stderr || `Salida ${r.status}`)
+  return r.stdout.trim()
 }

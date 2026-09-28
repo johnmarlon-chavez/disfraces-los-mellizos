@@ -4,10 +4,14 @@ import type { ServicioNube } from '../../shared/respaldos'
 
 const ZONA = 'America/Lima'
 const PREFIJO = 'Respaldo Disfraces'
-const MARCA_ANTES = ' (antes de restaurar)'
 
-// "Respaldo Disfraces 2026-09-28 18-30-05.zip" o "... 18-30-05 (antes de restaurar).zip"
-const PATRON = /^Respaldo Disfraces (\d{4}-\d{2}-\d{2}) (\d{2})-(\d{2})-(\d{2})( \(antes de restaurar\))?\.zip$/
+// "Respaldo Disfraces 2026-09-28 18-30-05.zip", "... 18-30-05 (antes de restaurar).zip"
+// o "... 18-30-05 (antes de actualizar a 1.1.0).zip"
+const PATRON =
+  /^Respaldo Disfraces (\d{4}-\d{2}-\d{2}) (\d{2})-(\d{2})-(\d{2})(?: \((antes de restaurar|antes de actualizar a ([0-9A-Za-z.+-]+))\))?\.zip$/
+
+/** Respaldos especiales: se conservan aparte de los de todos los días. */
+export type Especial = 'restaurar' | { actualizarA: string }
 
 export interface NombreRespaldo {
   archivo: string
@@ -16,6 +20,8 @@ export interface NombreRespaldo {
   /** Clave ordenable: "aaaa-mm-dd hh-mm-ss". */
   orden: string
   antesDeRestaurar: boolean
+  /** Versión del programa a la que se actualizó, si es un respaldo "antes de actualizar". */
+  antesDeActualizarA: string | null
 }
 
 function partesLima(instante: Date): Record<string, string> {
@@ -33,22 +39,34 @@ function partesLima(instante: Date): Record<string, string> {
 }
 
 /** Nombre del archivo, con fecha y hora de Lima (se entiende al verlo en Drive). */
-export function nombreRespaldo(instante: Date, antesDeRestaurar = false): string {
+export function nombreRespaldo(instante: Date, especial: Especial | null = null): string {
   const p = partesLima(instante)
-  return `${PREFIJO} ${p.year}-${p.month}-${p.day} ${p.hour}-${p.minute}-${p.second}${antesDeRestaurar ? MARCA_ANTES : ''}.zip`
+  const marca =
+    especial === null ? '' : especial === 'restaurar' ? ' (antes de restaurar)' : ` (antes de actualizar a ${especial.actualizarA})`
+  return `${PREFIJO} ${p.year}-${p.month}-${p.day} ${p.hour}-${p.minute}-${p.second}${marca}.zip`
 }
 
 /** Lee un nombre de respaldo; null si el archivo no es nuestro (y entonces nunca se toca). */
 export function leerNombre(archivo: string): NombreRespaldo | null {
   const m = PATRON.exec(archivo)
   if (!m) return null
-  return { archivo, dia: m[1], orden: `${m[1]} ${m[2]}-${m[3]}-${m[4]}`, antesDeRestaurar: !!m[5] }
+  return {
+    archivo,
+    dia: m[1],
+    orden: `${m[1]} ${m[2]}-${m[3]}-${m[4]}`,
+    antesDeRestaurar: m[5] === 'antes de restaurar',
+    antesDeActualizarA: m[6] ?? null
+  }
 }
+
+const esComun = (n: NombreRespaldo): boolean => !n.antesDeRestaurar && !n.antesDeActualizarA
 
 export const DIAS_EN_NUBE = 30
 export const RESPALDOS_LOCALES = 7
 /** Los "antes de restaurar" se conservan aparte: pueden ser la única copia de lo más reciente. */
 export const ANTES_DE_RESTAURAR = 5
+/** Los "antes de actualizar" también: sirven para volver a la versión anterior del programa. */
+export const ANTES_DE_ACTUALIZAR = 3
 
 const masNuevoPrimero = (a: NombreRespaldo, b: NombreRespaldo): number => b.orden.localeCompare(a.orden)
 
@@ -58,7 +76,7 @@ const masNuevoPrimero = (a: NombreRespaldo, b: NombreRespaldo): number => b.orde
  */
 export function sobrantesEnNube(archivos: string[], hoy: string, dias = DIAS_EN_NUBE): string[] {
   const nuestros = archivos.map(leerNombre).filter((n): n is NombreRespaldo => n !== null)
-  const comunes = nuestros.filter((n) => !n.antesDeRestaurar).sort(masNuevoPrimero)
+  const comunes = nuestros.filter(esComun).sort(masNuevoPrimero)
   const conservados = new Set<string>()
   const diasVistos = new Set<string>()
   for (const n of comunes) {
@@ -70,26 +88,26 @@ export function sobrantesEnNube(archivos: string[], hoy: string, dias = DIAS_EN_
       conservados.add(n.archivo)
     }
   }
-  return [...comunes.filter((n) => !conservados.has(n.archivo)), ...sobrantesAntesDeRestaurar(nuestros)].map((n) => n.archivo)
+  return [...comunes.filter((n) => !conservados.has(n.archivo)), ...sobrantesEspeciales(nuestros)].map((n) => n.archivo)
 }
 
-/** Copia local: los últimos 7 (más los "antes de restaurar", aparte). */
+/** Copia local: los últimos 7 (más los "antes de restaurar" y "antes de actualizar", aparte). */
 export function sobrantesLocales(archivos: string[], cantidad = RESPALDOS_LOCALES): string[] {
   const nuestros = archivos.map(leerNombre).filter((n): n is NombreRespaldo => n !== null)
-  const comunes = nuestros.filter((n) => !n.antesDeRestaurar).sort(masNuevoPrimero)
-  return [...comunes.slice(cantidad), ...sobrantesAntesDeRestaurar(nuestros)].map((n) => n.archivo)
+  const comunes = nuestros.filter(esComun).sort(masNuevoPrimero)
+  return [...comunes.slice(cantidad), ...sobrantesEspeciales(nuestros)].map((n) => n.archivo)
 }
 
-function sobrantesAntesDeRestaurar(nuestros: NombreRespaldo[]): NombreRespaldo[] {
-  return nuestros
-    .filter((n) => n.antesDeRestaurar)
-    .sort(masNuevoPrimero)
-    .slice(ANTES_DE_RESTAURAR)
+function sobrantesEspeciales(nuestros: NombreRespaldo[]): NombreRespaldo[] {
+  return [
+    ...nuestros.filter((n) => n.antesDeRestaurar).sort(masNuevoPrimero).slice(ANTES_DE_RESTAURAR),
+    ...nuestros.filter((n) => n.antesDeActualizarA).sort(masNuevoPrimero).slice(ANTES_DE_ACTUALIZAR)
+  ]
 }
 
 /** Nombre más reciente entre los nuestros (null si no hay). */
 export function masReciente(archivos: string[]): string | null {
-  const nuestros = archivos.map(leerNombre).filter((n): n is NombreRespaldo => n !== null && !n.antesDeRestaurar)
+  const nuestros = archivos.map(leerNombre).filter((n): n is NombreRespaldo => n !== null && esComun(n))
   return nuestros.sort(masNuevoPrimero)[0]?.archivo ?? null
 }
 

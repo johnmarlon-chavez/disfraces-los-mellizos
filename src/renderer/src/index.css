@@ -13,3 +13,20 @@ body {
 :focus-visible {
   @apply outline-3 outline-offset-2 outline-blue-700;
 }
+
+/* Guía de uso impresa (npm run guia:pdf): cada tema empieza sin cortarse entre páginas. */
+@media print {
+  .guia-impresion {
+    padding: 0;
+    background: white;
+  }
+  .guia-seccion {
+    box-shadow: none;
+    border: 1px solid #cbd5e1;
+    break-inside: avoid;
+  }
+  .guia-indice {
+    box-shadow: none;
+    border: 1px solid #cbd5e1;
+  }
+}

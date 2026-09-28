@@ -15,7 +15,9 @@ const PUBLICOS: ReadonlySet<NombreCanal> = new Set<NombreCanal>([
   // Solo se registran en la ventana de soporte, que se protege con la clave de soporte.
   'soporte:estado',
   'soporte:definirClave',
-  'soporte:restablecer'
+  'soporte:restablecer',
+  'soporte:versionNueva',
+  'soporte:volverARespaldo'
 ])
 
 const SOLO_DUENA: ReadonlySet<NombreCanal> = new Set<NombreCanal>([

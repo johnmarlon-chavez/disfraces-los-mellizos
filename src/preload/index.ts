@@ -53,7 +53,9 @@ const api: ApiDisfraces = {
   soporte: {
     estado: canal('soporte:estado'),
     definirClave: canal('soporte:definirClave'),
-    restablecer: canal('soporte:restablecer')
+    restablecer: canal('soporte:restablecer'),
+    versionNueva: canal('soporte:versionNueva'),
+    volverARespaldo: canal('soporte:volverARespaldo')
   },
   modelos: {
     listar: canal('modelos:listar'),

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <!-- Antifaz de carnaval, centrado en (0,0): cuerpo con dos ojos (evenodd) -->
+    <path id="antifaz" fill-rule="evenodd" d="M-82,-18 C-82,-44 -52,-46 -22,-32 C-9,-26 9,-26 22,-32 C52,-46 82,-44 82,-18 C82,14 60,38 30,38 C12,38 6,24 0,24 C-6,24 -12,38 -30,38 C-60,38 -82,14 -82,-18 Z M-56,-4 C-56,-18 -24,-20 -16,-6 C-12,6 -26,12 -38,11 C-50,10 -56,4 -56,-4 Z M56,-4 C56,-18 24,-20 16,-6 C12,6 26,12 38,11 C50,10 56,4 56,-4 Z"/>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="#f59e0b"/>
+  <g transform="translate(158 152) rotate(12) scale(0.9)">
+    <use href="#antifaz" fill="#ffffff" stroke="#1e293b" stroke-width="10" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(98 104) rotate(-12) scale(0.9)">
+    <use href="#antifaz" fill="#1e293b" stroke="#1e293b" stroke-width="10" stroke-linejoin="round"/>
+  </g>
+</svg>

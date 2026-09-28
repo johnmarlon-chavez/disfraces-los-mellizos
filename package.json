@@ -1,7 +1,7 @@
 {
   "name": "disfraces-los-mellizos",
   "productName": "Disfraces Los Mellizos",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Sistema de alquiler de disfraces - Disfraces Los Mellizos",
   "private": true,
   "main": "./out/main/index.js",
@@ -18,7 +18,14 @@
     "lint": "eslint .",
     "seed:reiniciar": "electron-vite build && node scripts/con-electron.mjs electron out/main/seed.js --reiniciar",
     "restablecer-duena": "electron-vite build && node scripts/con-electron.mjs electron . --restablecer-duena",
-    "definir-clave-soporte": "electron-vite build && node scripts/con-electron.mjs electron . --definir-clave-soporte"
+    "definir-clave-soporte": "electron-vite build && node scripts/con-electron.mjs electron . --definir-clave-soporte",
+    "iconos": "node scripts/con-electron.mjs electron scripts/generar-iconos.mjs",
+    "instalador": "electron-vite build && electron-builder --win --x64 --publish never",
+    "instalador:prueba": "electron-vite build && electron-builder --win --x64 --publish never -c.extraMetadata.version=1.0.1 -c.directories.output=release/prueba",
+    "sandbox": "node scripts/sandbox/abrir-sandbox.mjs",
+    "test:instalado": "playwright test -c playwright.instalado.config.ts",
+    "capturas": "electron-vite build && playwright test -c playwright.capturas.config.ts",
+    "guia:pdf": "electron-vite build && node scripts/con-electron.mjs electron scripts/generar-guia-pdf.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

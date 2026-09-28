@@ -9,7 +9,7 @@ export const NOMBRE_NUBE: Record<ServicioNube, string> = {
   icloud: 'iCloud'
 }
 
-export type TipoRespaldo = 'cierre' | 'manual' | 'inicio' | 'automatico' | 'antes_de_restaurar' | 'subida_pendiente'
+export type TipoRespaldo = 'cierre' | 'manual' | 'inicio' | 'automatico' | 'antes_de_restaurar' | 'antes_de_actualizar' | 'subida_pendiente'
 
 export interface ArchivoRespaldo {
   archivo: string
@@ -18,6 +18,8 @@ export interface ArchivoRespaldo {
   fecha: string
   tamano: number
   antesDeRestaurar: boolean
+  /** Versión a la que se actualizó, si es un respaldo "antes de actualizar". */
+  antesDeActualizarA: string | null
 }
 
 export interface IntentoRespaldo {
@@ -79,6 +81,19 @@ export interface Manifiesto {
   ultimoIdPedido: number
   ultimoIdPago: number
   archivos: Record<string, { tamano: number; sha256: string }>
+}
+
+/** Respaldo que una versión anterior del programa puede abrir (ventana "Datos de una versión más nueva"). */
+export interface RespaldoCompatible extends ArchivoRespaldo {
+  versionPrograma: string
+  conteos: ConteosRespaldo
+}
+
+export interface EstadoVersionNueva {
+  /** Versión de este programa (la anterior, a la que se volvió). */
+  versionPrograma: string
+  claveDefinida: boolean
+  respaldos: RespaldoCompatible[]
 }
 
 /** Lo que la dueña ve antes de confirmar una restauración. */

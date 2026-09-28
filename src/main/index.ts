@@ -4,11 +4,12 @@ import type Database from 'better-sqlite3'
 import { NOMBRE_TIENDA } from '../shared/constantes'
 import { crearServicioAcceso } from './acceso'
 import { registrarAuditoria } from './db/auditoria'
-import { abrirBaseDeDatos } from './db/conexion'
+import { abrirSinMigrar } from './db/conexion'
+import { aplicarMigraciones, MIGRACIONES, versionActual } from './db/migraciones'
 import { registrarAperturaSoporte } from './db/soporte'
 import { mensajeParaUsuario } from './errores'
 import { atenderProtocoloFotos, registrarEsquemaFotos } from './fotos'
-import { registrarManejadores, registrarManejadoresSoporte } from './ipc'
+import { registrarManejadores, registrarManejadoresSoporte, registrarManejadoresVersionNueva } from './ipc'
 import { RESPALDO_AUTOMATICO_MS } from './logica/respaldos'
 import { alAbrir, crearRespaldo, respaldoAutomatico, type ContextoRespaldos } from './respaldos'
 import { carpetaDatosAnterior, carpetaDatosElegida, prepararRutas, type Rutas } from './rutas'
@@ -24,13 +25,15 @@ let ventana: BrowserWindow | null = null
  * Abren una ventana pequeña que solo tiene los canales de soporte; el resto del programa no existe.
  */
 type ModoSoporte = 'restablecer' | 'definir-clave'
+/** Además de las herramientas: la ventana que abre sola una versión anterior con datos más nuevos. */
+type ModoVentanaSoporte = ModoSoporte | 'version-nueva'
 const modoSoporte: ModoSoporte | null = process.argv.includes('--restablecer-duena')
   ? 'restablecer'
   : process.argv.includes('--definir-clave-soporte')
     ? 'definir-clave'
     : null
 
-function crearVentana(soporte: ModoSoporte | null = null): BrowserWindow {
+function crearVentana(soporte: ModoVentanaSoporte | null = null): BrowserWindow {
   const win = new BrowserWindow({
     title: soporte ? `${NOMBRE_TIENDA} · Soporte` : NOMBRE_TIENDA,
     width: soporte ? 820 : 1366,
@@ -90,18 +93,85 @@ let respaldoEnCurso: Promise<unknown> = Promise.resolve()
 /** Ya se hizo el respaldo de cierre (o no corresponde): la ventana puede cerrarse. */
 let cierreListo = false
 
+/** El usuario eligió cerrar el programa (no es un error). */
+class CierreElegido extends Error {}
+
+/**
+ * Antes de migrar una base de una versión anterior: respaldo completo "antes de actualizar a X",
+ * que sirve para volver a la versión anterior del programa. Se anota en la base después de migrar
+ * (la base vieja quizás no tiene todavía ese tipo de respaldo). Si no se puede guardar, se pregunta.
+ */
+async function respaldoAntesDeActualizar(base: Database.Database, rutas: Rutas): Promise<(() => void) | undefined> {
+  const ctx: ContextoRespaldos = { db: base, rutas, versionPrograma: app.getVersion(), tienda: NOMBRE_TIENDA }
+  const r = await crearRespaldo(ctx, 'antes_de_actualizar', { actualizarA: app.getVersion(), diferirRegistro: true })
+  if (!r.local.ok && !r.nube?.ok) {
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: NOMBRE_TIENDA,
+      message: 'No se pudo guardar el respaldo antes de actualizar',
+      detail: `${r.local.error}.\n\nSin ese respaldo no se podrá volver a la versión anterior del programa. Se recomienda cerrar y pedir ayuda a su técnico.`,
+      buttons: ['Cerrar el programa', 'Continuar igual'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    })
+    if (response === 0) throw new CierreElegido()
+  }
+  return r.anotar
+}
+
+/** Cierra la base antes de intercambiar las carpetas al restaurar. */
+const cerrarBase = (): void => {
+  db?.close()
+  db = null
+}
+
+/** Tras restaurar (o si falló con la base ya cerrada): reiniciar el programa. */
+function reiniciar(mensajeError?: string): void {
+  cierreListo = true
+  if (mensajeError) dialog.showErrorBox(NOMBRE_TIENDA, mensajeError)
+  // DISFRACES_NO_RELANZAR: las pruebas E2E vuelven a abrir la app ellas mismas.
+  if (!process.env.DISFRACES_NO_RELANZAR) app.relaunch()
+  setTimeout(() => app.exit(0), 300) // deja llegar la respuesta a la ventana
+}
+
 async function iniciar(): Promise<void> {
   let rutas: Rutas
   let traslado: ResultadoTraslado
+  /** La base es de una versión más nueva del programa (se instaló una anterior). */
+  let datosMasNuevos = false
   try {
     const elegida = await carpetaDeDatos()
     traslado = elegida.traslado
     rutas = prepararRutas(elegida.carpeta)
-    db = abrirBaseDeDatos(rutas.baseDeDatos)
+    db = abrirSinMigrar(rutas.baseDeDatos)
+    const version = versionActual(db)
+    if (version > MIGRACIONES.length) {
+      datosMasNuevos = true
+    } else {
+      const anotar = version > 0 && version < MIGRACIONES.length ? await respaldoAntesDeActualizar(db, rutas) : undefined
+      aplicarMigraciones(db)
+      anotar?.()
+    }
   } catch (error) {
+    if (error instanceof CierreElegido) {
+      app.exit(0)
+      return
+    }
     console.error('[inicio] No se pudo abrir la base de datos:', error)
     dialog.showErrorBox(NOMBRE_TIENDA, `No se pudieron abrir los datos del sistema.\n\n${mensajeParaUsuario(error)}`)
     app.exit(1)
+    return
+  }
+  if (datosMasNuevos) {
+    // Volver a la versión anterior: esta versión no puede usar esos datos. Con la clave de soporte
+    // se vuelve a un respaldo compatible (normalmente el "antes de actualizar").
+    cierreListo = true
+    const info = { nombreTienda: NOMBRE_TIENDA, version: app.getVersion(), carpetaDatos: rutas.carpetaDatos, esDesarrollo: !app.isPackaged }
+    Menu.setApplicationMenu(null)
+    const ctx: ContextoRespaldos = { db, rutas, versionPrograma: app.getVersion(), tienda: NOMBRE_TIENDA }
+    registrarManejadoresVersionNueva(db, info, { ctx, cerrarBase, reiniciar })
+    ventana = crearVentana('version-nueva')
     return
   }
   if (traslado.estado === 'trasladado') {
@@ -130,20 +200,7 @@ async function iniciar(): Promise<void> {
   atenderProtocoloFotos(rutas.fotos)
   // DISFRACES_INACTIVIDAD_MS: solo para las pruebas E2E (no esperar 10 minutos reales).
   const inactividadMs = Number(process.env.DISFRACES_INACTIVIDAD_MS) || undefined
-  registrarManejadores(db, info, rutas, crearServicioAcceso(db, { inactividadMs }), {
-    ctx,
-    cerrarBase: () => {
-      db?.close()
-      db = null
-    },
-    reiniciar: (mensajeError) => {
-      cierreListo = true
-      if (mensajeError) dialog.showErrorBox(NOMBRE_TIENDA, mensajeError)
-      // DISFRACES_NO_RELANZAR: las pruebas E2E vuelven a abrir la app ellas mismas.
-      if (!process.env.DISFRACES_NO_RELANZAR) app.relaunch()
-      setTimeout(() => app.exit(0), 300) // deja llegar la respuesta a la ventana
-    }
-  })
+  registrarManejadores(db, info, rutas, crearServicioAcceso(db, { inactividadMs }), { ctx, cerrarBase, reiniciar })
   ventana = crearVentana()
   ventana.on('close', (evento) => {
     if (cierreListo || !db) return

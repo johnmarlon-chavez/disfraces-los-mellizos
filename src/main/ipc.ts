@@ -70,6 +70,30 @@ export function registrarManejadoresSoporte(db: Database.Database, info: InfoApp
   manejar('soporte:restablecer', (clave) => soporte.restablecerConClave(db, clave))
 }
 
+/**
+ * Ventana "Datos de una versión más nueva": se instaló una versión anterior del programa y la base
+ * es de una más nueva. Solo estos canales existen; volver a un respaldo exige la clave de soporte.
+ */
+export function registrarManejadoresVersionNueva(db: Database.Database, info: InfoApp, sistema: SistemaRespaldos): void {
+  const manejar = crearManejar(null)
+  manejar('app:info', () => info)
+  manejar('soporte:versionNueva', () => ({
+    versionPrograma: info.version,
+    claveDefinida: soporte.estadoSoporte(db).claveDefinida,
+    respaldos: respaldos.respaldosCompatibles(sistema.ctx)
+  }))
+  manejar('soporte:volverARespaldo', async (ruta, clave) => {
+    soporte.exigirClave(db, clave, 'volver_version_anterior')
+    try {
+      await respaldos.restaurarRespaldo(sistema.ctx, ruta, null, sistema.cerrarBase)
+    } catch (error) {
+      if ((error as { baseCerrada?: boolean }).baseCerrada) sistema.reiniciar(mensajeParaUsuario(error))
+      throw error
+    }
+    sistema.reiniciar()
+  })
+}
+
 export function registrarManejadores(
   db: Database.Database,
   info: InfoApp,

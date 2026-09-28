@@ -14,6 +14,7 @@ import FichaCliente from './paginas/FichaCliente'
 import NuevoCliente from './paginas/NuevoCliente'
 import Reportes from './paginas/Reportes'
 import Configuracion from './paginas/Configuracion'
+import Ayuda from './paginas/Ayuda'
 
 export default function App(): React.JSX.Element {
   const { esDuena } = useSesion()
@@ -35,6 +36,7 @@ export default function App(): React.JSX.Element {
         {/* Reportes y Configuración: solo la dueña (para Trabajadores no existen y vuelven a Inicio). */}
         {esDuena && <Route path="reportes" element={<Reportes />} />}
         {esDuena && <Route path="configuracion" element={<Configuracion />} />}
+        <Route path="ayuda" element={<Ayuda />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

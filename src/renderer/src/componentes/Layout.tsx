@@ -36,7 +36,15 @@ export default function Layout(): React.JSX.Element {
             </li>
           ))}
         </ul>
-        <div className="mt-auto border-t border-slate-700 p-3">
+        <div className="mt-auto flex flex-col gap-2 border-t border-slate-700 p-3">
+          <NavLink
+            to="/ayuda"
+            className={({ isActive }) =>
+              `block rounded-lg px-3 py-2 text-base font-semibold ${isActive ? 'bg-amber-400 text-slate-900' : 'text-amber-300 underline hover:bg-slate-700'}`
+            }
+          >
+            ¿Cómo se hace?
+          </NavLink>
           <p className="px-2 pb-2 text-base text-slate-300">
             Sesión: <strong className="text-white">{sesion.nombre}</strong>
           </p>

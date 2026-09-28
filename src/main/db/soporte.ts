@@ -56,7 +56,7 @@ export function estadoSoporte(db: Database.Database, ahora = new Date()): Estado
  * Verifica la clave con el límite de intentos (5 fallos → esperas de 1, 5, 15, 30 y 60 minutos).
  * Registra el fallo en auditoría con `herramienta`; lanza el error para la pantalla.
  */
-function exigirClave(db: Database.Database, clave: string, herramienta: string, ahora: Date): void {
+export function exigirClave(db: Database.Database, clave: string, herramienta: string, ahora = new Date()): void {
   const f = fila(db)
   if (!f.clave_hash) {
     auditar(db, 'soporte_sin_clave', { herramienta })

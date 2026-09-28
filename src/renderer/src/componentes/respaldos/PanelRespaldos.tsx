@@ -256,6 +256,7 @@ function DialogoRestaurar({ estado, onCerrar }: { estado: EstadoRespaldos; onCer
                   className="w-full rounded-lg border-2 border-slate-300 px-3 py-2 text-left text-lg hover:bg-slate-50"
                 >
                   {fechaHora(a.fecha)} {a.antesDeRestaurar && <span className="text-slate-600">(antes de restaurar)</span>}
+                  {a.antesDeActualizarA && <span className="text-slate-600">(antes de actualizar a {a.antesDeActualizarA})</span>}
                   <span className="ml-2 text-base text-slate-600">{megas(a.tamano)}</span>
                 </button>
               </li>

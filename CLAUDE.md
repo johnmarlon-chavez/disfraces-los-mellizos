@@ -374,6 +374,41 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 9. **Instalador**: electron-builder con NSIS, ícono, acceso directo en escritorio, nombre de la tienda.
    - **Anotado en la Fase 8:** desinstalar **no** debe borrar `%LOCALAPPDATA%\SistemaDisfraces\`, que tiene la base, las fotos y la copia local de respaldos. Revisar las opciones de NSIS (`deleteAppDataOnUninstall` en false) y que ningún script de desinstalación la toque.
    - Incluir en el procedimiento de instalación: definir la clave de soporte (`--definir-clave-soporte`) y elegir con la dueña la carpeta de respaldos en Google Drive u OneDrive.
+   - **Hecho (Fase 9):** ver la sección «Instalador» más abajo. La guía de instalación paso a paso está en `docs/guia-instalacion.md`.
+
+## Instalador (Fase 9)
+- **electron-builder** (`electron-builder.yml`) genera `release\<versión>\Instalar Disfraces Los Mellizos <versión>.exe` con `npm run instalador`:
+  - NSIS **por usuario**, sin permisos de administrador, en `%LOCALAPPDATA%\Programs\Disfraces Los Mellizos\`;
+  - accesos directos en el escritorio y en el menú Inicio, instalador en español, y el programa se abre al terminar;
+  - `deleteAppDataOnUninstall: false`. Los datos (`%LOCALAPPDATA%\SistemaDisfraces\`) quedan fuera de todo lo que toca el desinstalador; la prueba del Sandbox lo comprueba.
+  - `asarUnpack: **/*.node`: el binario de better-sqlite3 no se puede cargar desde dentro del `.asar`.
+  - Versión 1.0.0: la primera que se instala en la tienda.
+- **Sin firma digital** (decisión de la dueña y el técnico). SmartScreen avisa solo con archivos descargados; se evita llevando el instalador por USB, o con «Más información → Ejecutar de todas formas» o «Propiedades → Desbloquear». Se detalla en `docs/guia-instalacion.md`. El registro de electron-builder dice «signing with signtool» pero, sin certificado, no firma nada (`Get-AuthenticodeSignature` → NotSigned).
+- **Ícono:**
+  - `build/iconos/*.svg` tiene tres opciones: `antifaces` (provisional), `antifaz-lm` y `sombrero`. **Pendiente: la dueña elige una.**
+  - Para cambiarlo: `npm run iconos -- <opción>`, que genera los PNG de 16 a 256 px y el `.ico` con Chromium de Electron, sin programas de diseño, y lo copia a `build/icon.ico` y a `src/renderer/src/assets/icono.svg` (pantalla de ingreso). Después, `npm run instalador`.
+  - La página para mostrarle las opciones a la dueña, sin internet, es `docs/iconos/Opciones de ícono.html`.
+- **Actualizar** (instalador nuevo encima del anterior):
+  - Al abrir, si la base es de una versión anterior (`user_version` menor que `MIGRACIONES.length` y mayor que 0), **antes de migrar** `index.ts` guarda un respaldo completo «(antes de actualizar a X)» en la copia local y en la nube.
+  - Se conservan los últimos 3, aparte de los respaldos comunes.
+  - Se abre la base con `abrirSinMigrar()`, se respalda, se migra y recién entonces se anota el intento (`crearRespaldo(..., { diferirRegistro: true })` y `anotar()`), porque la base vieja quizás no tiene la tabla o el tipo (migración 013).
+  - Si no se puede guardar ese respaldo, pregunta si cerrar o continuar.
+- **Volver a la versión anterior:**
+  - Se instala el instalador anterior encima.
+  - Si la base es de una versión más nueva (`user_version` mayor que `MIGRACIONES.length`), no se muestra un error: se abre la ventana de soporte **«Datos de una versión más nueva»** (`#/soporte/version-nueva`, `registrarManejadoresVersionNueva`). Solo tiene esos canales.
+  - Lista los respaldos que esta versión puede abrir (leyendo solo el `manifiesto.json` de cada zip), primero los «antes de actualizar». Con la **clave de soporte** restaura uno: guarda antes un respaldo del estado actual, conserva las credenciales y reinicia.
+  - `vistaRestauracion` compara con `MIGRACIONES.length`, no con la versión de la base abierta.
+- **Guía de uso** (para la dueña): `src/renderer/src/guia/GuiaDeUso.tsx` es la única fuente.
+  - Se ve en el programa con **«¿Cómo se hace?»**, al pie del menú, para las dos cuentas (ruta `/ayuda`).
+  - Con `npm run guia:pdf` se genera `docs/Guía de uso - Disfraces Los Mellizos.pdf`: la ventana `#/guia-impresion` se convierte con `printToPDF` y se agrega un espacio para el teléfono del técnico. El programa sigue sin imprimir nada; el PDF se genera una vez, aquí.
+  - Las capturas (`src/renderer/src/guia/capturas/*.jpg`) se generan con datos ficticios a 1366×768 con `npm run capturas` (`tests/capturas/`). Van dentro del programa, así que funciona sin internet. **Rehacerlas y regenerar el PDF cuando cambie alguna pantalla de la guía.**
+- **Guía de instalación** (para el técnico): `docs/guia-instalacion.md` cubre SmartScreen, primer uso, clave de soporte, carpeta de respaldos, primer recordatorio, reglas del negocio, actualizar, volver atrás, restablecer el acceso y probar en Sandbox.
+- **Pruebas del instalador:**
+  - `npm run test:instalado` corre **todas las E2E contra el programa empaquetado** (`release\<versión>\win-unpacked`, con `DISFRACES_E2E_EXE`).
+  - `tests/e2e/actualizacion.spec.ts` prueba el respaldo «antes de actualizar» y la vuelta atrás con datos reales. Usa `enBase()` del ayudante, que modifica la base con Electron en modo Node.
+  - `npm run instalador:prueba` genera una 1.0.1 idéntica (`extraMetadata.version`) en `release\prueba\`.
+  - `npm run sandbox` abre Windows Sandbox y corre `scripts/sandbox/probar-instalador.ps1`: instalar, accesos directos, abrir, actualizar, bajar de versión, desinstalar sin perder datos y reinstalar. El informe queda en `release\sandbox\resultados\resultado.txt`.
+  - Windows Sandbox requiere activarlo una vez: «Espacio aislado de Windows», permisos de administrador y reiniciar. En la PC de desarrollo (Windows 10 Pro) **todavía no está activado**.
 
 ## Comandos
 
@@ -389,6 +424,13 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 | `npm run lint` | ESLint. |
 | `npm run restablecer-duena` | Herramienta de soporte en desarrollo: código de recuperación nuevo para la dueña (ver "Soporte" en Seguridad). Cerrar antes la app. |
 | `npm run definir-clave-soporte` | Herramienta de soporte en desarrollo: definir o cambiar la clave de soporte. Cerrar antes la app. |
+| `npm run instalador` | Genera el instalador en `release\<versión>\`. |
+| `npm run instalador:prueba` | Genera una 1.0.1 idéntica en `release\prueba\` (para probar actualizar y volver atrás). |
+| `npm run test:instalado` | Corre las E2E contra el programa empaquetado (tras `npm run instalador`). |
+| `npm run sandbox` | Prueba el instalador en Windows Sandbox (instalar, actualizar, volver atrás, desinstalar). |
+| `npm run iconos -- <opción>` | Genera los íconos y deja la opción elegida como ícono del programa. |
+| `npm run capturas` | Rehace las capturas de la guía de uso. |
+| `npm run guia:pdf` | Genera el PDF de la guía de uso en `docs/`. |
 | `npm run build` | Compila a `out/`. |
 | `npm start` | Ejecuta la versión compilada. |
 

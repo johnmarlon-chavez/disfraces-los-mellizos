@@ -12,6 +12,7 @@ import { hoyEnLima } from '../shared/formato'
 import type {
   ArchivoRespaldo,
   AvisosRespaldo,
+  RespaldoCompatible,
   ConteosRespaldo,
   EstadoRespaldos,
   IntentoRespaldo,
@@ -22,7 +23,7 @@ import type {
 } from '../shared/respaldos'
 import { abrirBaseDeDatos } from './db/conexion'
 import { registrarAuditoria } from './db/auditoria'
-import { versionActual } from './db/migraciones'
+import { MIGRACIONES } from './db/migraciones'
 import * as registro from './db/respaldos'
 import { ErrorDeNegocio } from './errores'
 import {
@@ -234,17 +235,37 @@ function borrarSobrantes(carpeta: string, sobrantes: string[]): void {
   }
 }
 
+export interface OpcionesRespaldo {
+  /** Para "antes de actualizar": versión del programa nuevo (va en el nombre del archivo). */
+  actualizarA?: string
+  /**
+   * No anotar nada en la base todavía: el respaldo "antes de actualizar" se hace con el esquema
+   * viejo, que quizás aún no tiene la tabla respaldos o ese tipo. Se anota con `anotar()` después
+   * de migrar.
+   */
+  diferirRegistro?: boolean
+}
+
 /**
  * Hace un respaldo: primero la copia local (siempre), luego la de la nube si hay carpeta elegida.
  * Nunca lanza: devuelve el resultado de cada destino, que además queda registrado.
  */
-export async function crearRespaldo(ctx: ContextoRespaldos, tipo: TipoRespaldo): Promise<ResultadoRespaldo> {
+export async function crearRespaldo(
+  ctx: ContextoRespaldos,
+  tipo: TipoRespaldo,
+  opciones: OpcionesRespaldo = {}
+): Promise<ResultadoRespaldo & { anotar?: () => void }> {
   const instante = ahoraDe(ctx)
   const fecha = instante.toISOString()
-  const archivo = nombreRespaldo(instante, tipo === 'antes_de_restaurar')
+  const archivo = nombreRespaldo(
+    instante,
+    tipo === 'antes_de_restaurar' ? 'restaurar' : opciones.actualizarA ? { actualizarA: opciones.actualizarA } : null
+  )
   const nube = registro.carpetaNube(ctx.db)
-  const registrar = (destino: 'local' | 'nube', error: unknown, zip: Uint8Array | null): void =>
-    registro.registrarIntento(ctx.db, {
+  const anotaciones: (() => void)[] = []
+  const registrar = (destino: 'local' | 'nube', error: unknown, zip: Uint8Array | null): number =>
+    anotaciones.push(() =>
+      registro.registrarIntento(ctx.db, {
       tipo,
       destino,
       archivo,
@@ -255,6 +276,7 @@ export async function crearRespaldo(ctx: ContextoRespaldos, tipo: TipoRespaldo):
       fecha,
       marca
     })
+    )
 
   let zip: Uint8Array | null = null
   let errorArmar: unknown = null
@@ -306,14 +328,16 @@ export async function crearRespaldo(ctx: ContextoRespaldos, tipo: TipoRespaldo):
     resultadoNube = intento('nube', fecha, errorNube)
   }
   if (!errorLocal || (resultadoNube && resultadoNube.ok)) {
-    registrarAuditoria(ctx.db, null, 'respaldo_creado', 'respaldos', null, {
-      archivo,
-      tipo,
-      local: !errorLocal,
-      nube: resultadoNube ? resultadoNube.ok : null
-    })
+    const nubeOk = resultadoNube ? resultadoNube.ok : null
+    anotaciones.push(() =>
+      registrarAuditoria(ctx.db, null, 'respaldo_creado', 'respaldos', null, { archivo, tipo, local: !errorLocal, nube: nubeOk })
+    )
   }
-  return { archivo, local: intento('local', fecha, errorLocal), nube: resultadoNube, carpetaRecreada }
+  const anotar = (): void => anotaciones.forEach((f) => f())
+  const resultado = { archivo, local: intento('local', fecha, errorLocal), nube: resultadoNube, carpetaRecreada }
+  if (opciones.diferirRegistro) return { ...resultado, anotar }
+  anotar()
+  return resultado
 }
 
 /** Sube a la nube la copia local más reciente si no está allá (por ejemplo, si al cerrar no se pudo). */
@@ -400,7 +424,14 @@ export function listarRespaldos(carpeta: string | null): ArchivoRespaldo[] {
       } catch {
         /* se borró mientras se listaba */
       }
-      return { archivo, ruta, fecha: fechaDeNombre(archivo), tamano, antesDeRestaurar: n!.antesDeRestaurar }
+      return {
+        archivo,
+        ruta,
+        fecha: fechaDeNombre(archivo),
+        tamano,
+        antesDeRestaurar: n!.antesDeRestaurar,
+        antesDeActualizarA: n!.antesDeActualizarA
+      }
     })
 }
 
@@ -512,7 +543,9 @@ export function probarRespaldo(ctx: ContextoRespaldos, ruta: string): Manifiesto
 
 export function vistaRestauracion(ctx: ContextoRespaldos, ruta: string): VistaRestauracion {
   const m = probarRespaldo(ctx, ruta)
-  const actual = versionActual(ctx.db)
+  // Lo que este programa sabe migrar (no la versión de la base abierta, que puede ser más nueva
+  // si se volvió a una versión anterior del programa).
+  const actual = MIGRACIONES.length
   const n = (sql: string, id: number): number => (ctx.db.prepare(sql).get(id) as { n: number }).n
   return {
     archivo: ruta,
@@ -673,4 +706,38 @@ export async function restaurarRespaldo(
   }
   rmSync(preparando, { recursive: true, force: true })
   return { antes }
+}
+
+// ——— Volver a una versión anterior del programa ———
+
+/** Lee solo el manifiesto de un respaldo (sin descomprimir la base ni las fotos); null si no se puede. */
+export function leerManifiesto(ruta: string): Manifiesto | null {
+  try {
+    const archivos = unzipSync(readFileSync(ruta), { filter: (f) => f.name === 'manifiesto.json' })
+    const m = JSON.parse(strFromU8(archivos['manifiesto.json'])) as Manifiesto
+    return m?.formato === 1 ? m : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Respaldos que este programa puede abrir (de su versión de esquema o anteriores), de la copia
+ * local y de la carpeta en la nube, del más nuevo al más viejo. Los "antes de actualizar" son
+ * los que sirven para volver atrás después de una actualización.
+ */
+export function respaldosCompatibles(ctx: ContextoRespaldos): RespaldoCompatible[] {
+  const vistos = new Set<string>()
+  let nube: string | null = null
+  try {
+    nube = registro.carpetaNube(ctx.db)
+  } catch {
+    /* base de una versión más nueva con otra estructura: solo la copia local */
+  }
+  return [...listarRespaldos(ctx.rutas.respaldosLocales), ...listarRespaldos(nube)]
+    .filter((a) => !vistos.has(a.archivo) && vistos.add(a.archivo))
+    .map((a) => ({ ...a, manifiesto: leerManifiesto(a.ruta) }))
+    .filter((a): a is ArchivoRespaldo & { manifiesto: Manifiesto } => !!a.manifiesto && a.manifiesto.versionEsquema <= MIGRACIONES.length)
+    .map(({ manifiesto, ...a }) => ({ ...a, versionPrograma: manifiesto.versionPrograma, conteos: manifiesto.conteos }))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
 }

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { lanzarApp, ventanaMinima, type AppDePrueba } from './ayudante'
+import { hayDesbordeHorizontal, lanzarApp, ventanaMinima, type AppDePrueba } from './ayudante'
 
 let a: AppDePrueba
 
@@ -51,4 +51,21 @@ test('a 1366×768 el menú y el contenido se ven sin desbordarse', async () => {
   }))
   expect(desborde).toEqual({ horizontal: false, vertical: false })
   await expect(a.ventana.getByRole('link', { name: 'Configuración' })).toBeInViewport()
+})
+
+test('«¿Cómo se hace?» abre la guía de uso, con sus capturas incluidas en el programa', async () => {
+  const v = a.ventana
+  await v.getByRole('navigation', { name: 'Menú principal' }).getByRole('link', { name: '¿Cómo se hace?' }).click()
+  await expect(v.getByRole('heading', { level: 1, name: '¿Cómo se hace?' })).toBeVisible()
+  await expect(v.getByRole('heading', { name: '3. Registrar un pedido' })).toBeVisible()
+  await v.getByRole('navigation', { name: 'Temas de la guía' }).getByRole('link', { name: 'Recibir la devolución' }).click()
+  await expect(v.getByRole('heading', { name: '5. Recibir la devolución' })).toBeInViewport()
+  // Las capturas vienen dentro del programa (funciona sin internet)
+  const imagenes = await v.evaluate(() => Array.from(document.querySelectorAll('main img')).map((i) => ({ src: (i as HTMLImageElement).src, ancho: (i as HTMLImageElement).naturalWidth })))
+  expect(imagenes.length).toBe(6)
+  for (const i of imagenes) {
+    expect(i.src.startsWith('file:') || i.src.startsWith('data:')).toBe(true)
+    expect(i.ancho).toBeGreaterThan(1000)
+  }
+  expect(await hayDesbordeHorizontal(v)).toBe(false)
 })

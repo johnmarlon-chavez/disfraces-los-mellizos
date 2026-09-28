@@ -85,7 +85,7 @@ test('Trabajadores no ve Reportes ni Configuración', async () => {
   await salir()
   await entrar('Trabajadores', TRAB)
   await expect(menu()).toContainText('Sesión: Trabajadores')
-  for (const s of ['Inicio', 'Alquileres', 'Disfraces', 'Clientes']) await expect(menu().getByRole('link', { name: s })).toBeVisible()
+  for (const s of ['Inicio', 'Alquileres', 'Disfraces', 'Clientes', '¿Cómo se hace?']) await expect(menu().getByRole('link', { name: s })).toBeVisible()
   await expect(menu().getByRole('link', { name: 'Reportes' })).toHaveCount(0)
   await expect(menu().getByRole('link', { name: 'Configuración' })).toHaveCount(0)
   // Ni escribiendo la dirección

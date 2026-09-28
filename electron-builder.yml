@@ -1,0 +1,41 @@
+# Instalador de Windows (Fase 9). Ver "Instalador" en CLAUDE.md y docs/guia-instalacion.md.
+appId: pe.disfraceslosmellizos.sistema
+productName: Disfraces Los Mellizos
+copyright: Disfraces Los Mellizos
+directories:
+  output: release/${version}
+  buildResources: build
+# Solo lo compilado y el package.json; las dependencias de producción las agrega electron-builder.
+files:
+  - out/**/*
+  - package.json
+# better-sqlite3: su binario (.node) no se puede cargar desde dentro del .asar.
+asarUnpack:
+  - '**/*.node'
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: Instalar Disfraces Los Mellizos ${version}.${ext}
+nsis:
+  # Instalación para el usuario actual, sin pedir permisos de administrador:
+  # %LOCALAPPDATA%\Programs\Disfraces Los Mellizos\
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Disfraces Los Mellizos
+  uninstallDisplayName: Disfraces Los Mellizos
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  runAfterFinish: true
+  # NUNCA borrar datos al desinstalar. Los datos del negocio viven en %LOCALAPPDATA%\SistemaDisfraces\
+  # (fuera de la carpeta del programa y de lo que el desinstalador toca); esto además conserva
+  # %APPDATA%\Disfraces Los Mellizos (preferencias de Chromium).
+  deleteAppDataOnUninstall: false
+  installerLanguages: [es_ES]
+  language: '3082'
+  multiLanguageInstaller: false

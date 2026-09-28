@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { NOMBRE_TIENDA } from '../../../../shared/constantes'
+import { formatearFecha, formatearHora } from '../../../../shared/formato'
+import type { EstadoVersionNueva, RespaldoCompatible } from '../../../../shared/respaldos'
 import { problemaDeClaveSoporte, type EstadoSoporte } from '../../../../shared/soporte'
 import { llamar, mensajeDe } from '../../api'
 import Boton from '../ui/Boton'
 import { CodigoGrande, MarcoAcceso } from './AsistentePrimerUso'
 import CampoContrasena from './CampoContrasena'
 
-export type ModoSoporte = 'restablecer' | 'definir-clave'
+export type ModoSoporte = 'restablecer' | 'definir-clave' | 'version-nueva'
 
 function MensajeError({ texto }: { texto: string | null }): React.JSX.Element | null {
   if (!texto) return null
@@ -21,6 +23,10 @@ const cerrar = (): void => window.close()
 
 /** Ventana de las herramientas de soporte. Solo funciona con la clave de soporte. */
 export default function PantallaSoporte({ modo }: { modo: ModoSoporte }): React.JSX.Element {
+  return modo === 'version-nueva' ? <VersionNueva /> : <Herramienta modo={modo} />
+}
+
+function Herramienta({ modo }: { modo: Exclude<ModoSoporte, 'version-nueva'> }): React.JSX.Element {
   const [estado, setEstado] = useState<EstadoSoporte | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -199,6 +205,116 @@ function DefinirClave({ estado }: { estado: EstadoSoporte }): React.JSX.Element 
           <Boton type="submit" disabled={ocupado}>
             Guardar clave
           </Boton>
+        </div>
+      </form>
+    </MarcoAcceso>
+  )
+}
+
+const fechaHora = (iso: string): string => `${formatearFecha(new Date(iso))} a las ${formatearHora(new Date(iso))}`
+
+/**
+ * Se instaló una versión anterior del programa y los datos son de una más nueva: esta versión no
+ * puede usarlos. El técnico, con la clave de soporte, vuelve a un respaldo compatible
+ * (normalmente el "antes de actualizar"). Antes se guarda un respaldo del estado actual.
+ */
+function VersionNueva(): React.JSX.Element {
+  const [estado, setEstado] = useState<EstadoVersionNueva | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [elegido, setElegido] = useState<RespaldoCompatible | null>(null)
+  const [clave, setClave] = useState('')
+  const [ocupado, setOcupado] = useState(false)
+  const [listo, setListo] = useState(false)
+
+  useEffect(() => {
+    document.title = `${NOMBRE_TIENDA} · Soporte`
+    window.api.soporte.versionNueva().then((r) => (r.ok ? setEstado(r.datos) : setError(r.error)))
+  }, [])
+
+  const volver = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (!elegido) return setError('Elija el respaldo al que quiere volver.')
+    if (!clave) return setError('Escriba la clave de soporte.')
+    setOcupado(true)
+    setError(null)
+    try {
+      await llamar(window.api.soporte.volverARespaldo(elegido.ruta, clave))
+      setListo(true)
+    } catch (err) {
+      setError(mensajeDe(err))
+      setClave('')
+      setOcupado(false)
+    }
+  }
+
+  if (listo) {
+    return (
+      <MarcoAcceso titulo="Datos recuperados">
+        <p role="status" className="text-lg">
+          Listo. El programa se está reiniciando con los datos del {elegido && fechaHora(elegido.fecha)}.
+        </p>
+      </MarcoAcceso>
+    )
+  }
+  if (!estado) {
+    return (
+      <MarcoAcceso titulo="Datos de una versión más nueva">
+        {error ? <MensajeError texto={error} /> : <p className="text-lg">Cargando…</p>}
+      </MarcoAcceso>
+    )
+  }
+  const antesDeActualizar = estado.respaldos.filter((r) => r.antesDeActualizarA)
+  const otros = estado.respaldos.filter((r) => !r.antesDeActualizarA)
+
+  const opcion = (r: RespaldoCompatible): React.JSX.Element => (
+    <li key={r.archivo}>
+      <label className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 px-3 py-2 ${elegido?.archivo === r.archivo ? 'border-blue-700 bg-blue-50' : 'border-slate-300'}`}>
+        <input type="radio" name="respaldo" className="mt-1.5 size-5" checked={elegido?.archivo === r.archivo} onChange={() => setElegido(r)} />
+        <span>
+          <strong>{fechaHora(r.fecha)}</strong>
+          {r.antesDeActualizarA && <> · antes de actualizar a {r.antesDeActualizarA}</>}
+          <span className="block text-base text-slate-600">
+            Programa {r.versionPrograma} · {r.conteos.clientes} clientes, {r.conteos.pedidos} pedidos, {r.conteos.fotos} fotos
+          </span>
+        </span>
+      </label>
+    </li>
+  )
+
+  return (
+    <MarcoAcceso titulo="Datos de una versión más nueva">
+      <form onSubmit={volver} className="flex flex-col gap-4">
+        <p className="text-lg">
+          Estos datos se guardaron con una versión más nueva del programa, y esta versión ({estado.versionPrograma}) no puede usarlos.
+        </p>
+        <p className="rounded-lg bg-slate-100 p-3 text-base">
+          <strong>Si instaló esta versión a propósito para volver atrás:</strong> elija un respaldo y escriba la clave de soporte. Se
+          perderá lo registrado después de ese respaldo (antes se guarda una copia del estado actual). Las contraseñas no cambian.
+          <br />
+          <strong>Si no:</strong> cierre esta ventana e instale de nuevo la versión más nueva.
+        </p>
+        {estado.respaldos.length === 0 ? (
+          <MensajeError texto="No hay respaldos que esta versión pueda abrir. Instale de nuevo la versión más nueva." />
+        ) : (
+          <ul className="flex max-h-60 flex-col gap-2 overflow-y-auto text-lg" aria-label="Respaldos compatibles">
+            {antesDeActualizar.map(opcion)}
+            {otros.map(opcion)}
+          </ul>
+        )}
+        {!estado.claveDefinida && <MensajeError texto="La clave de soporte no fue definida en este equipo. Sin ella no se puede volver atrás." />}
+        {estado.respaldos.length > 0 && estado.claveDefinida && (
+          <CampoContrasena etiqueta="Clave de soporte" valor={clave} onCambio={setClave} autoComplete="off" />
+        )}
+        <MensajeError texto={error} />
+        <div className="flex justify-between gap-3">
+          <Boton variante="secundario" onClick={cerrar}>
+            Cerrar
+          </Boton>
+          {estado.respaldos.length > 0 && estado.claveDefinida && (
+            <Boton type="submit" variante="peligro" disabled={ocupado}>
+              Volver a este respaldo
+            </Boton>
+          )}
         </div>
       </form>
     </MarcoAcceso>

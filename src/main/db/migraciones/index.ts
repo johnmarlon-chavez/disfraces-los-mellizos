@@ -12,6 +12,7 @@ import { migracion009 } from './009_usuarios_acceso'
 import { migracion010 } from './010_clave_soporte'
 import { migracion011 } from './011_respaldos'
 import { migracion012 } from './012_respaldo_automatico'
+import { migracion013 } from './013_antes_de_actualizar'
 
 export interface Migracion {
   version: number
@@ -42,7 +43,8 @@ export const MIGRACIONES: readonly Migracion[] = [
   migracion009,
   migracion010,
   migracion011,
-  migracion012
+  migracion012,
+  migracion013
 ]
 
 export function versionActual(db: Database.Database): number {

@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as clientes from '../../src/main/db/clientes'
 import { abrirBaseDeDatos } from '../../src/main/db/conexion'
 import * as disfraces from '../../src/main/db/disfraces'
-import { aplicarMigraciones, MIGRACIONES } from '../../src/main/db/migraciones'
+import { abrirSinMigrar } from '../../src/main/db/conexion'
+import { aplicarMigraciones, MIGRACIONES, versionActual } from '../../src/main/db/migraciones'
 import * as pedidos from '../../src/main/db/pedidos'
 import * as registro from '../../src/main/db/respaldos'
 import * as usuarios from '../../src/main/db/usuarios'
@@ -32,6 +33,8 @@ import {
   crearRespaldo,
   estadoRespaldos,
   respaldoAutomatico,
+  crearRespaldo as crear,
+  respaldosCompatibles,
   restaurarRespaldo,
   subirPendiente,
   sugerirCarpetas,
@@ -51,7 +54,10 @@ describe('nombres y qué conservar', () => {
     const n = nombreRespaldo(new Date('2026-09-29T02:30:05Z')) // 21:30:05 del 28 en Lima
     expect(n).toBe('Respaldo Disfraces 2026-09-28 21-30-05.zip')
     expect(leerNombre(n)).toMatchObject({ dia: '2026-09-28', antesDeRestaurar: false })
-    expect(nombreRespaldo(new Date('2026-09-29T02:30:05Z'), true)).toBe('Respaldo Disfraces 2026-09-28 21-30-05 (antes de restaurar).zip')
+    expect(nombreRespaldo(new Date('2026-09-29T02:30:05Z'), 'restaurar')).toBe('Respaldo Disfraces 2026-09-28 21-30-05 (antes de restaurar).zip')
+    const actualizar = nombreRespaldo(new Date('2026-09-29T02:30:05Z'), { actualizarA: '1.1.0' })
+    expect(actualizar).toBe('Respaldo Disfraces 2026-09-28 21-30-05 (antes de actualizar a 1.1.0).zip')
+    expect(leerNombre(actualizar)).toMatchObject({ antesDeRestaurar: false, antesDeActualizarA: '1.1.0' })
     for (const ajeno of ['foto.jpg', 'Respaldo Disfraces 2026-09-28.zip', 'Respaldo Disfraces 2026-09-28 21-30-05.zip.tmp']) {
       expect(leerNombre(ajeno)).toBeNull()
     }
@@ -78,6 +84,12 @@ describe('nombres y qué conservar', () => {
     const antes = Array.from({ length: 7 }, (_, i) => `Respaldo Disfraces 2026-09-0${i + 1} 10-00-00 (antes de restaurar).zip`)
     const sobran = sobrantesEnNube([...antes, 'Respaldo Disfraces 2026-09-07 18-00-00.zip'], '2026-09-28')
     expect(sobran).toEqual([antes[1], antes[0]])
+  })
+
+  it('los "antes de actualizar" se conservan aparte (los últimos 3)', () => {
+    const antes = ['1.0.1', '1.0.2', '1.1.0', '1.2.0'].map((v, i) => `Respaldo Disfraces 2026-0${i + 1}-01 10-00-00 (antes de actualizar a ${v}).zip`)
+    expect(sobrantesEnNube(antes, '2026-09-28')).toEqual([antes[0]])
+    expect(sobrantesLocales(antes)).toEqual([antes[0]])
   })
 
   it('copia local: los últimos 7', () => {
@@ -435,6 +447,72 @@ describe('respaldos en disco', () => {
       expect(usuarios.iniciarSesion(db, 'trabajadores', TRAB).rol).toBe('empleado')
     } finally {
       db.close()
+    }
+  })
+})
+
+describe('actualizar y volver a la versión anterior', () => {
+  let base: string
+  beforeEach(() => {
+    usuarios.establecerRondasBcrypt(4)
+    base = mkdtempSync(join(tmpdir(), 'disfraces-version-'))
+  })
+  afterEach(() => rmSync(base, { recursive: true, force: true }))
+
+  function contexto(db: Database.Database): ContextoRespaldos {
+    const rutas = rutasDe(join(base, 'datos'))
+    mkdirSync(rutas.fotos, { recursive: true })
+    mkdirSync(rutas.respaldosLocales, { recursive: true })
+    return { db, rutas, versionPrograma: '1.1.0', tienda: 'Disfraces Los Mellizos', entorno: {}, ahora: () => new Date('2026-09-28T15:00:00Z') }
+  }
+
+  it('antes de migrar una base vieja: respaldo "antes de actualizar", anotado después de migrar', async () => {
+    const rutas = rutasDe(join(base, 'datos'))
+    mkdirSync(rutas.fotos, { recursive: true })
+    // Una base de la versión 10 (antes de la tabla respaldos)
+    const vieja = abrirSinMigrar(rutas.baseDeDatos)
+    aplicarMigraciones(vieja, MIGRACIONES.slice(0, 10))
+    const ctx = contexto(vieja)
+    const r = await crear(ctx, 'antes_de_actualizar', { actualizarA: '1.1.0', diferirRegistro: true })
+    expect(r.archivo).toBe('Respaldo Disfraces 2026-09-28 10-00-00 (antes de actualizar a 1.1.0).zip')
+    expect(r.local.ok).toBe(true)
+    expect(existsSync(join(rutas.respaldosLocales, r.archivo))).toBe(true)
+    aplicarMigraciones(vieja)
+    r.anotar!()
+    expect(vieja.prepare("SELECT tipo, destino, ok FROM respaldos").all()).toEqual([{ tipo: 'antes_de_actualizar', destino: 'local', ok: 1 }])
+    vieja.close()
+  })
+
+  it('con datos de una versión más nueva: lista los respaldos compatibles y vuelve a uno, conservando las contraseñas', async () => {
+    const rutas = rutasDe(join(base, 'datos'))
+    mkdirSync(rutas.fotos, { recursive: true })
+    const db = abrirSinMigrar(rutas.baseDeDatos)
+    aplicarMigraciones(db)
+    const codigo = generarCodigoRecuperacion()
+    usuarios.crearCuentas(db, { contrasenaDuena: DUENA, contrasenaTrabajadores: TRAB, codigoConfirmado: codigo }, codigo)
+    const ctx = contexto(db)
+    const antes = await crear(ctx, 'antes_de_actualizar', { actualizarA: '1.1.0' })
+    // Llega una "versión más nueva": otro esquema (se simula subiendo la versión) y otra contraseña
+    const duena = usuarios.iniciarSesion(db, 'duena', DUENA)
+    usuarios.cambiarContrasena(db, duena, 'duena', DUENA, 'marinera en la plaza')
+    db.pragma(`user_version = ${MIGRACIONES.length + 1}`)
+    // Un respaldo "de la versión nueva" no se lista: esta versión no puede abrirlo
+    const nuevo = join(rutas.respaldosLocales, 'Respaldo Disfraces 2026-09-29 10-00-00.zip')
+    const archivos = unzipSync(readFileSync(join(rutas.respaldosLocales, antes.archivo)))
+    const m = JSON.parse(strFromU8(archivos['manifiesto.json'])) as Manifiesto
+    writeFileSync(nuevo, zipSync({ ...archivos, 'manifiesto.json': strToU8(JSON.stringify({ ...m, versionEsquema: MIGRACIONES.length + 1 })) }))
+
+    const lista = respaldosCompatibles(ctx)
+    expect(lista.map((r) => r.archivo)).toEqual([antes.archivo])
+    expect(lista[0]).toMatchObject({ antesDeActualizarA: '1.1.0', versionPrograma: '1.1.0' })
+
+    await restaurarRespaldo(ctx, lista[0].ruta, null, () => db.close())
+    const vuelta = abrirSinMigrar(rutas.baseDeDatos)
+    try {
+      expect(versionActual(vuelta)).toBe(MIGRACIONES.length)
+      expect(usuarios.iniciarSesion(vuelta, 'duena', 'marinera en la plaza').rol).toBe('admin')
+    } finally {
+      vuelta.close()
     }
   })
 })

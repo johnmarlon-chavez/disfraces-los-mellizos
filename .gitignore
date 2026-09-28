@@ -27,3 +27,6 @@ playwright-report/
 Thumbs.db
 .DS_Store
 *.log
+
+# Íconos generados (npm run iconos); build/icon.ico sí se guarda
+build/iconos/generados/

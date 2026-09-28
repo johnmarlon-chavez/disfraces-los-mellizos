@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { NOMBRE_TIENDA } from '../../../../shared/constantes'
+import icono from '../../assets/icono.svg'
 import { llamar, mensajeDe } from '../../api'
 import Boton from '../ui/Boton'
 import { CampoTexto } from '../ui/Campos'
@@ -13,6 +14,7 @@ export function MarcoAcceso({ titulo, children }: { titulo: string; children: Re
   return (
     <div className="flex h-screen items-center justify-center overflow-y-auto bg-slate-900 p-4">
       <div className="w-full max-w-xl rounded-xl bg-white p-8 shadow-xl">
+        <img src={icono} alt="" className="mx-auto mb-2 size-16" />
         <p className="text-center text-2xl font-bold text-slate-900">{NOMBRE_TIENDA}</p>
         <h1 className="mt-1 mb-6 text-center text-xl text-slate-700">{titulo}</h1>
         {children}

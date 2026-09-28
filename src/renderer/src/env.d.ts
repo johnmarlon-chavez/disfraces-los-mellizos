@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { ApiDisfraces } from '../../shared/ipc'
 
 declare global {

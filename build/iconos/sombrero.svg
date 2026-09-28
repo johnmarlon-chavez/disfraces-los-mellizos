@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#1e293b"/>
+  <!-- Sombrero de paja de ala ancha (marinera), con cinta roja y blanca -->
+  <ellipse cx="128" cy="168" rx="112" ry="34" fill="#fcd34d" stroke="#92400e" stroke-width="6"/>
+  <path d="M68,166 C68,100 84,62 128,62 C172,62 188,100 188,166 C168,178 88,178 68,166 Z" fill="#fcd34d" stroke="#92400e" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M71,136 C96,148 160,148 185,136 L187,158 C160,171 96,171 69,158 Z" fill="#dc2626"/>
+  <path d="M70,147 C96,159 160,159 186,147 L186.5,152 C160,164 96,164 69.5,152 Z" fill="#ffffff"/>
+  <path d="M96,78 C110,70 126,68 140,70" fill="none" stroke="#fef3c7" stroke-width="7" stroke-linecap="round"/>
+</svg>

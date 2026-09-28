@@ -4,7 +4,7 @@
 import type { AutorizacionDuena } from './autorizacion'
 import type { Cuenta, DatosPrimerUso, EstadoAcceso, ResumenSoporte } from './contrasenas'
 import type { DatosClaveSoporte, EstadoSoporte } from './soporte'
-import type { AvisosRespaldo, EstadoRespaldos, Manifiesto, ResultadoRespaldo, VistaRestauracion } from './respaldos'
+import type { AvisosRespaldo, EstadoRespaldos, EstadoVersionNueva, Manifiesto, ResultadoRespaldo, VistaRestauracion } from './respaldos'
 import type {
   CalendarioOcupacion,
   DatosInicio,
@@ -125,6 +125,10 @@ export interface CanalesIpc {
   'soporte:estado': { args: []; resultado: EstadoSoporte }
   'soporte:definirClave': { args: [datos: DatosClaveSoporte]; resultado: void }
   'soporte:restablecer': { args: [clave: string]; resultado: string }
+  // Ventana "Datos de una versión más nueva" (se volvió a instalar una versión anterior del programa).
+  'soporte:versionNueva': { args: []; resultado: EstadoVersionNueva }
+  /** Con la clave de soporte, vuelve a un respaldo compatible y reinicia el programa. */
+  'soporte:volverARespaldo': { args: [ruta: string, clave: string]; resultado: void }
 
   'modelos:listar': { args: []; resultado: ResumenModelo[] }
   'modelos:obtener': { args: [id: number]; resultado: FichaModelo }
@@ -276,6 +280,8 @@ export interface ApiDisfraces {
     estado: Metodo<'soporte:estado'>
     definirClave: Metodo<'soporte:definirClave'>
     restablecer: Metodo<'soporte:restablecer'>
+    versionNueva: Metodo<'soporte:versionNueva'>
+    volverARespaldo: Metodo<'soporte:volverARespaldo'>
   }
   modelos: {
     listar: Metodo<'modelos:listar'>

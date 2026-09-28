@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#f59e0b"/>
+  <g transform="translate(128 84) scale(0.95)">
+    <path fill="#1e293b" fill-rule="evenodd" d="M-82,-18 C-82,-44 -52,-46 -22,-32 C-9,-26 9,-26 22,-32 C52,-46 82,-44 82,-18 C82,14 60,38 30,38 C12,38 6,24 0,24 C-6,24 -12,38 -30,38 C-60,38 -82,14 -82,-18 Z M-56,-4 C-56,-18 -24,-20 -16,-6 C-12,6 -26,12 -38,11 C-50,10 -56,4 -56,-4 Z M56,-4 C56,-18 24,-20 16,-6 C12,6 26,12 38,11 C50,10 56,4 56,-4 Z"/>
+  </g>
+  <text x="128" y="216" text-anchor="middle" font-family="Arial Black, Segoe UI Black, Arial, sans-serif" font-weight="900" font-size="104" fill="#1e293b" letter-spacing="-4">LM</text>
+</svg>
