@@ -31,7 +31,11 @@ Aplicación de escritorio para Windows que controla el inventario y los alquiler
 - `contextIsolation: true`, `nodeIntegration: false`. El renderer (React) nunca accede directo a la base de datos: todo pasa por IPC mediante un `preload` con una API tipada.
 - La lógica de negocio (disponibilidad, mora, liquidación de devoluciones) va en módulos puros en el proceso main, separados de la capa de acceso a datos, para poder probarlos con Vitest.
 - Migraciones de base de datos versionadas, que se aplican solas al iniciar la app. Nunca romper datos existentes al actualizar.
-- La base de datos vive en `Documentos\SistemaDisfraces\datos.db`, NO en la carpeta de instalación, para que reinstalar o actualizar no borre nada. Las fotos, en `Documentos\SistemaDisfraces\fotos\`.
+- La base de datos vive en `%LOCALAPPDATA%\SistemaDisfraces\datos.db`, NO en la carpeta de instalación, para que reinstalar o actualizar no borre nada. Las fotos, en `%LOCALAPPDATA%\SistemaDisfraces\fotos\`, y la copia local de respaldos, en `%LOCALAPPDATA%\SistemaDisfraces\respaldos\`. En desarrollo se usa `%LOCALAPPDATA%\SistemaDisfraces-dev\`.
+  - **Por qué no en Documentos (decisión de la Fase 8):** en muchas laptops con Windows 10/11, Documentos está redirigida a OneDrive ("Copia de seguridad de carpetas conocidas"). Una base SQLite abierta, con sus archivos `-wal` y `-shm`, sincronizándose mientras se usa puede terminar en conflictos (`datos-NOMBREPC.db`), bloqueos o corrupción. Además, OneDrive puede liberar espacio dejando el archivo solo en la nube, y sin internet la app no abriría. `%LOCALAPPDATA%` nunca se sincroniza ni viaja con el perfil, así que **lo único que va a la nube es la carpeta de respaldos elegida**.
+  - Antes de la Fase 8 los datos estaban en `Documentos\SistemaDisfraces\` (o `-dev`). Al iniciar, la app los traslada sola y de forma segura (ver "Traslado de datos" en Respaldos).
+  - Al iniciar, si la carpeta de datos resultara estar dentro de OneDrive o Google Drive, la app lo registra y se lo avisa a la dueña.
+  - El instalador de la Fase 9 no debe borrar `%LOCALAPPDATA%\SistemaDisfraces\` al desinstalar.
 - El .gitignore debe excluir *.db, la carpeta de fotos, dist/ y release/. Nunca subir datos de clientes ni instaladores al repositorio.
 
 ## Reglas generales
@@ -260,7 +264,7 @@ Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún da
 5. Al ingresar, la dueña ve un aviso: "El acceso de su cuenta fue restablecido por soporte técnico el dd/mm/aaaa a las hh:mm. Si usted no lo pidió, comuníquese con su técnico.", con el botón "Entendido".
    - Se muestra en cada ingreso de la dueña hasta que lo pulse; no se cierra con Escape.
    - Configuración muestra siempre la fecha del último restablecimiento por soporte.
-- En desarrollo: `npm run restablecer-duena` (usa `Documentos\SistemaDisfraces-dev\`).
+- En desarrollo: `npm run restablecer-duena` (usa `%LOCALAPPDATA%\SistemaDisfraces-dev\`).
 - Queda registrado en la auditoría como `codigo_restablecido_soporte`.
 
 **Auditoría de soporte** (entidad `soporte`, sin usuario). Cada uso queda registrado, con éxito o no:
@@ -283,6 +287,68 @@ Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún da
 - Usar la API de backup de SQLite, no copiar el archivo mientras está abierto.
 - Opción en Configuración para "Restaurar un respaldo" (base de datos y fotos), con confirmación y creando antes un respaldo del estado actual.
 
+### Decisiones de la Fase 8 (plan aprobado)
+- **Formato:** un `.zip` por respaldo (`Respaldo Disfraces aaaa-mm-dd hh-mm.zip`). Contiene:
+  - `datos.db` (con la API de backup y `integrity_check`);
+  - `fotos\`;
+  - `manifiesto.json` con la fecha, las versiones del programa y del esquema, los conteos y un hash de cada archivo.
+- **Escritura segura:** se arma en una carpeta temporal y se escribe como `.tmp`. Se verifica leyéndolo de nuevo y recién entonces se renombra. Nunca queda un archivo a medias.
+- **Cuándo:**
+  - al cerrar la app;
+  - con el botón "Hacer un respaldo ahora";
+  - al abrir la app, si el último respaldo correcto tiene más de 24 horas (por si se apagó la laptop sin cerrar el programa).
+- **Qué se conserva:**
+  - En la carpeta en la nube, **30 días distintos**: todos los respaldos de hoy y, de los días anteriores, el último de cada día.
+  - La **copia local** (`%LOCALAPPDATA%\SistemaDisfraces\respaldos\`) guarda los últimos 7.
+  - Los respaldos viejos se borran solo después de verificar el nuevo, y solo archivos con nuestro patrón de nombre.
+- **Si la carpeta en la nube no está disponible** (no existe, falta la unidad, disco lleno, sin permiso, tiempo agotado):
+  - siempre queda la copia local;
+  - se muestra un mensaje claro con "Reintentar" y "Cerrar igual";
+  - el intento queda registrado;
+  - al abrir de nuevo, la app sube sola la copia local pendiente, y la dueña ve el aviso en Inicio.
+  - Si la carpeta fue borrada pero existe la de arriba, se vuelve a crear y se avisa.
+- **Restaurar:** solo la dueña, con su contraseña. **Se conservan las credenciales actuales** (contraseñas, código de recuperación, clave de soporte y contadores de intentos): solo vuelven los datos del negocio y las fotos. Antes de confirmar, la pantalla le dice que sus contraseñas no cambian y qué se pierde (lo registrado después de la fecha del respaldo). Siempre se hace antes un respaldo del estado actual.
+- **Verificación para la dueña:**
+  - panel "Respaldos" en Configuración, con un semáforo del último respaldo;
+  - el destino en palabras claras ("Google Drive › …", o un aviso si la carpeta no se sube a internet);
+  - botones "Abrir la carpeta de respaldos" y "Probar un respaldo" (lo abre y muestra los conteos sin restaurar);
+  - **recordatorio mensual** para buscar el último respaldo en Drive u OneDrive desde el celular y confirmar "Sí, lo vi";
+  - tarjeta roja en Inicio si hace más de 2 días que no hay un respaldo correcto o si el último falló.
+
+### Traslado de datos (Documentos → %LOCALAPPDATA%)
+Se hace al iniciar la app, antes de abrir la base y con el bloqueo de instancia única ya tomado. No se hace si se usa `DISFRACES_DATOS_DIR`.
+1. Solo se traslada si en `%LOCALAPPDATA%\SistemaDisfraces\` no hay un `datos.db` y en `Documentos\SistemaDisfraces\` sí. Si hay datos en los dos lugares, se usa el nuevo, no se mezcla nada y queda anotado.
+2. La base se copia con la API de backup de SQLite, que incluye lo que esté en el `-wal`, a un archivo temporal. Se verifica con `integrity_check` y se renombra a `datos.db`.
+3. Se copian las fotos y se verifican (misma cantidad, tamaño y hash).
+4. Solo si todo salió bien:
+   - el `datos.db` viejo se renombra a `datos.db.trasladado`, junto con sus `-wal` y `-shm`;
+   - se deja un `LÉAME - los datos se trasladaron.txt` que explica la nueva ubicación;
+   - no se borra nada.
+5. Queda en la auditoría como `datos_trasladados` (desde, hacia).
+6. **Si algo falla**, se borran los temporales del destino y el origen queda intacto. En esa sesión la app sigue usando la ubicación anterior, y lo reintenta en el siguiente inicio. Esto incluye una base que OneDrive dejó solo en la nube y no puede bajar sin internet.
+7. El seed hace el mismo traslado antes de sembrar. Queda `traslado_fallido` en la auditoría si no se pudo.
+
+### Cómo está hecho (Fase 8)
+- `src/main/respaldos.ts` no depende de Electron, así que se prueba con Vitest.
+  - Arma el zip en memoria y lo verifica (hashes del manifiesto e `integrity_check`).
+  - Escribe primero la copia local y después la de la nube. La escritura en la nube tiene un tiempo máximo de 60 s, por si la unidad no responde.
+  - Registra cada intento en la tabla `respaldos` (migración 011) y `respaldo_creado` en la auditoría.
+- Temporales dentro de la carpeta de datos (`tmp-*`, `restaurando\`), nunca en la nube.
+- Al restaurar, lo que había queda en `restauracion-anterior\`, además del respaldo "(antes de restaurar)", hasta la siguiente restauración.
+- Qué se conserva de la base actual al restaurar:
+  - las filas de `usuarios` (credenciales y contadores) y `soporte`;
+  - la tabla `respaldos` completa;
+  - `configuracion.carpeta_respaldo` y `respaldo_nube_confirmado_en`.
+  - El resto vuelve del respaldo, incluida la auditoría, a la que se agrega `respaldo_restaurado`. Un respaldo de una versión anterior se migra; uno de una versión más nueva se rechaza.
+- Cierre de la app:
+  - `index.ts` cancela el `close` de la ventana, avisa a la interfaz (`respaldo:guardando` → pantalla "Guardando respaldo…"), espera el respaldo de inicio si seguía en curso y hace el de cierre.
+  - Si falla algo, muestra un diálogo nativo con "Reintentar" y "Cerrar igual".
+  - Las herramientas de soporte no hacen respaldos.
+- Al abrir, 3 s después de mostrar la ventana, `alAbrir()` hace un respaldo si el último correcto tiene más de 24 h; si no, sube a la nube la copia local pendiente.
+- Detección de nube (`logica/respaldos.ts`): variables `OneDrive*`, carpetas "Mi unidad" / "My Drive" / "Google Drive", Dropbox e iCloud. Las sugerencias revisan las unidades D: a Z: y el perfil del usuario.
+- Validación de la carpeta elegida: no puede estar dentro de la carpeta de datos ni contenerla, y se prueba escribir, leer y borrar un archivo.
+- Después de restaurar, la app se reinicia sola (`app.relaunch()`), salvo con `DISFRACES_NO_RELANZAR` (pruebas E2E).
+
 ## Plan de trabajo por fases
 
 Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin errores, las pruebas deben pasar y se hace commit.
@@ -297,13 +363,15 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
 7. **Usuarios y roles**: las dos cuentas, permisos por rol y cambio de contraseña.
 8. **Respaldos y restauración**.
 9. **Instalador**: electron-builder con NSIS, ícono, acceso directo en escritorio, nombre de la tienda.
+   - **Anotado en la Fase 8:** desinstalar **no** debe borrar `%LOCALAPPDATA%\SistemaDisfraces\`, que tiene la base, las fotos y la copia local de respaldos. Revisar las opciones de NSIS (`deleteAppDataOnUninstall` en false) y que ningún script de desinstalación la toque.
+   - Incluir en el procedimiento de instalación: definir la clave de soporte (`--definir-clave-soporte`) y elegir con la dueña la carpeta de respaldos en Google Drive u OneDrive.
 
 ## Comandos
 
 | Comando | Qué hace |
 |---|---|
 | `npm install` | Instala dependencias y descarga el binario precompilado de better-sqlite3 para Electron (`postinstall`). |
-| `npm run dev` | App en modo desarrollo con recarga en caliente. Datos en `Documentos\SistemaDisfraces-dev\`. |
+| `npm run dev` | App en modo desarrollo con recarga en caliente. Datos en `%LOCALAPPDATA%\SistemaDisfraces-dev\` (antes en `Documentos\SistemaDisfraces-dev\`; se trasladan solos). |
 | `npm run seed` | Carga datos de prueba en la base de desarrollo (solo si está vacía). |
 | `npm run seed:reiniciar` | Guarda la base de desarrollo actual como `datos-anterior-<fecha>.db` (no la borra) y vuelve a cargar los datos de prueba. Cerrar antes la app si está abierta. |
 | `npm test` | Pruebas unitarias con Vitest (corren dentro de Electron). |
@@ -329,6 +397,11 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `{ inactividadMs }`, que usa la variable `DISFRACES_INACTIVIDAD_MS` (por defecto una hora en las pruebas, para no cortar sesiones).
   - `{ carpetaDatos, args }` y `cerrar(true)` para volver a abrir la misma carpeta, por ejemplo con `--restablecer-duena` (ver `tests/e2e/soporte.spec.ts`).
 - En las pruebas unitarias, `establecerRondasBcrypt(4)` acelera bcrypt.
+- Pruebas E2E y respaldos:
+  - `lanzarApp()` pasa `DISFRACES_NO_RELANZAR=1`: tras restaurar, la app solo termina y la prueba la vuelve a abrir con `{ carpetaDatos }`.
+  - Los diálogos nativos (`dialog.showMessageBox`, `showOpenDialog`) se reemplazan con `app.evaluate` (ver `tests/e2e/respaldos.spec.ts`). Como la app termina enseguida, lo que muestran se anota en un archivo (`process.getBuiltinModule('node:fs')`).
+  - Para probar el respaldo al cerrar, usar `app.close()`: `window.close()` desde la página no pasa por el evento `close` que se puede cancelar.
+  - Cada apertura de la app de prueba hace además un respaldo de inicio a los 3 s. Si una prueba cuenta archivos, conviene esperar 1 s entre respaldos, porque dos en el mismo segundo tienen el mismo nombre.
 - El seed crea también historia de los últimos meses (devueltos, con daños, cancelado, con deuda, vencido, no recogido) usando las funciones reales con un "hoy" en el pasado, y fecha los pagos en su día. Para probarlo sin tocar la base de desarrollo: `DISFRACES_DATOS_DIR=<carpeta>-dev npx electron out/main/seed.js` (el nombre de la carpeta debe terminar en `-dev`).
 - Electron arranca con `--lang=es-PE` (Chromium lo sirve como `es-419`) para que los campos de fecha muestren dd/mm/aaaa.
 - En layouts de dos columnas usar `grid-cols-[minmax(0,1fr)_…]`, no `1fr`: con `1fr` el contenido largo desborda a 1366×768.
@@ -349,6 +422,8 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `logica/acceso.ts` — código de recuperación, esperas del bloqueo y control de inactividad (puro).
   - `logica/nivelesIpc.ts` — nivel de acceso de cada canal.
   - `fotos.ts` — diálogo, reducción a 1200 px y protocolo `fotos://archivo/<nombre>`, que solo sirve archivos de la carpeta de fotos.
+  - `rutas.ts` — carpeta de datos (`%LOCALAPPDATA%\SistemaDisfraces`, o `DISFRACES_DATOS_DIR`) y carpeta anterior (Documentos). `traslado.ts` — traslado seguro desde Documentos.
+  - `respaldos.ts` — armar, verificar, escribir y restaurar respaldos; estado y avisos para la dueña. `logica/respaldos.ts` — nombres, qué conservar, detección de nube y errores en palabras simples. `db/respaldos.ts` — registro de intentos y carpeta en la nube.
 - `src/preload/` — expone `window.api` según el contrato.
 - `src/renderer/` — React + Tailwind. Componentes base en `componentes/ui/` (Boton, CampoTexto, Dialogo, `useConfirmar()`, `useAvisos()`); usarlos en vez de `confirm()`/`alert()`. Para tallas usar `SelectorTalla` (lista fija + "Otra…") y para regiones `SelectorRegion`.
 - Migraciones en `src/main/db/migraciones/`: agregar un archivo nuevo al final de la lista; nunca editar una migración ya publicada. La versión se guarda en `PRAGMA user_version`. Para reconstruir una tabla (SQLite no permite quitar `NOT NULL` ni cambiar restricciones), marcar la migración con `sinClavesForaneas: true`: el runner desactiva las claves foráneas fuera de la transacción, verifica `foreign_key_check` antes de confirmar y las reactiva siempre (ver `004_clientes_colegios.ts`).
@@ -358,6 +433,10 @@ Trabajar una fase a la vez. Al terminar cada una: la app debe arrancar sin error
   - `ProveedorSesion` / `useSesion()` decide qué se muestra: el asistente, la pantalla de ingreso o la app. Al cerrar la sesión desmonta la app entera, diálogos incluidos, y vigila la inactividad de la dueña.
   - `CampoContrasena` tiene el botón 👁 para ver la contraseña, el aviso de Bloq Mayús y el indicador de seguridad.
   - `PantallaSoporte`: la ventana de las herramientas de soporte. `main.tsx` la muestra en lugar de la app cuando el hash es `#/soporte/...`.
+- `src/renderer/src/componentes/respaldos/`:
+  - `PanelRespaldos` (Configuración) tiene el semáforo, el destino, las sugerencias de carpeta, "Hacer un respaldo ahora", "Probar el último respaldo" y el diálogo de restauración con la contraseña de la dueña.
+  - `AvisosRespaldo` son las líneas de Inicio: fallo o más de 2 días sin respaldo, falta de carpeta en la nube, recordatorio del celular y datos en carpeta sincronizada.
+  - `GuardandoRespaldo` es la pantalla que se muestra al cerrar.
   - Menú y rutas filtrados por rol: Reportes y Configuración no existen para Trabajadores.
 
 ## Datos pendientes de confirmar con la dueña

@@ -30,6 +30,26 @@ const api: ApiDisfraces = {
     avisoVisto: canal('acceso:avisoVisto'),
     resumenSoporte: canal('acceso:resumenSoporte')
   },
+  respaldos: {
+    estado: canal('respaldos:estado'),
+    avisos: canal('respaldos:avisos'),
+    hacerAhora: canal('respaldos:hacerAhora'),
+    elegirCarpeta: canal('respaldos:elegirCarpeta'),
+    usarCarpeta: canal('respaldos:usarCarpeta'),
+    abrirCarpeta: canal('respaldos:abrirCarpeta'),
+    probar: canal('respaldos:probar'),
+    elegirArchivo: canal('respaldos:elegirArchivo'),
+    vistaRestauracion: canal('respaldos:vistaRestauracion'),
+    restaurar: canal('respaldos:restaurar'),
+    confirmarNube: canal('respaldos:confirmarNube')
+  },
+  eventos: {
+    alGuardarRespaldo: (fn) => {
+      const oyente = (): void => fn()
+      ipcRenderer.on('respaldo:guardando', oyente)
+      return () => ipcRenderer.removeListener('respaldo:guardando', oyente)
+    }
+  },
   soporte: {
     estado: canal('soporte:estado'),
     definirClave: canal('soporte:definirClave'),

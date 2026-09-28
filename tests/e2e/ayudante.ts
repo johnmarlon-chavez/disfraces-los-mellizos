@@ -37,7 +37,7 @@ export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePru
   const { ELECTRON_RUN_AS_NODE: _, ...entorno } = process.env
   const app = await electron.launch({
     args: ['.', ...args],
-    env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs) } as Record<string, string>
+    env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs), DISFRACES_NO_RELANZAR: '1' } as Record<string, string>
   })
   const ventana = await app.firstWindow()
   await ventana.waitForLoadState('domcontentloaded')
@@ -65,7 +65,8 @@ export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePru
     ventana,
     carpetaDatos,
     cerrar: async (conservarDatos = false) => {
-      await app.close()
+      // Tras restaurar, la app ya terminó sola.
+      await app.close().catch(() => {})
       if (!conservarDatos) rmSync(carpetaDatos, { recursive: true, force: true })
     }
   }

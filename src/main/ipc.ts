@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type Database from 'better-sqlite3'
 import type { ArgsDe, NombreCanal, Resultado, ResultadoDe, InfoApp } from '../shared/ipc'
 import { ErrorSinSesion, type ServicioAcceso } from './acceso'
@@ -9,12 +9,25 @@ import * as disfraces from './db/disfraces'
 import * as entregas from './db/entregas'
 import * as pedidos from './db/pedidos'
 import * as reportes from './db/reportes'
+import * as registroRespaldos from './db/respaldos'
 import * as soporte from './db/soporte'
 import * as usuarios from './db/usuarios'
 import { elegirYGuardarFoto } from './fotos'
 import type { Rutas } from './rutas'
 import { accionDeCanal, nivelDeCanal } from './logica/nivelesIpc'
+import * as respaldos from './respaldos'
 import { obtenerSesion } from './sesion'
+
+/** Lo que necesitan los canales de respaldos, además de la base. */
+export interface SistemaRespaldos {
+  ctx: respaldos.ContextoRespaldos
+  /** Cierra la base antes de intercambiar las carpetas al restaurar. */
+  cerrarBase: () => void
+  /** Tras restaurar (o si falló con la base ya cerrada): reiniciar el programa. */
+  reiniciar: (mensajeError?: string) => void
+}
+
+const ventanaActual = (): BrowserWindow | undefined => BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
 
 type Manejador<K extends NombreCanal> = (...args: ArgsDe<K>) => ResultadoDe<K> | Promise<ResultadoDe<K>>
 
@@ -57,7 +70,13 @@ export function registrarManejadoresSoporte(db: Database.Database, info: InfoApp
   manejar('soporte:restablecer', (clave) => soporte.restablecerConClave(db, clave))
 }
 
-export function registrarManejadores(db: Database.Database, info: InfoApp, rutas: Rutas, acceso: ServicioAcceso): void {
+export function registrarManejadores(
+  db: Database.Database,
+  info: InfoApp,
+  rutas: Rutas,
+  acceso: ServicioAcceso,
+  sistema: SistemaRespaldos
+): void {
   const manejar = crearManejar(acceso)
 
   manejar('app:info', () => info)
@@ -158,6 +177,60 @@ export function registrarManejadores(db: Database.Database, info: InfoApp, rutas
 
   manejar('inicio:datos', () => reportes.datosInicio(db, obtenerSesion()))
   manejar('unidades:liberar', (ids) => disfraces.liberarUnidades(db, ids, obtenerSesion()))
+
+  // Respaldos: nivel "duena" (ver logica/nivelesIpc.ts).
+  const ctx = sistema.ctx
+  const usarCarpeta = (carpeta: string): void => {
+    respaldos.validarCarpetaNube(ctx, carpeta)
+    registroRespaldos.guardarCarpetaNube(db, carpeta, obtenerSesion())
+  }
+  manejar('respaldos:estado', () => respaldos.estadoRespaldos(ctx))
+  manejar('respaldos:avisos', () => respaldos.avisosRespaldo(ctx))
+  manejar('respaldos:hacerAhora', () => respaldos.crearRespaldo(ctx, 'manual'))
+  manejar('respaldos:elegirCarpeta', async () => {
+    const opciones: Electron.OpenDialogOptions = {
+      title: 'Elegir la carpeta de respaldos (Google Drive u OneDrive)',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: registroRespaldos.carpetaNube(db) ?? respaldos.sugerirCarpetas(process.env)[0]?.ruta
+    }
+    const v = ventanaActual()
+    const r = v ? await dialog.showOpenDialog(v, opciones) : await dialog.showOpenDialog(opciones)
+    if (r.canceled || r.filePaths.length === 0) return null
+    usarCarpeta(r.filePaths[0])
+    return r.filePaths[0]
+  })
+  manejar('respaldos:usarCarpeta', (carpeta) => usarCarpeta(carpeta))
+  manejar('respaldos:abrirCarpeta', async (cual) => {
+    const carpeta = cual === 'nube' ? registroRespaldos.carpetaNube(db) : cual === 'local' ? rutas.respaldosLocales : rutas.carpetaDatos
+    if (!carpeta) throw new ErrorDeNegocio('Todavía no eligió la carpeta de respaldos.')
+    const error = await shell.openPath(carpeta)
+    if (error) throw new ErrorDeNegocio('No se pudo abrir la carpeta. ¿Está disponible?')
+  })
+  manejar('respaldos:probar', (ruta) => respaldos.probarRespaldo(ctx, ruta))
+  manejar('respaldos:elegirArchivo', async () => {
+    const opciones: Electron.OpenDialogOptions = {
+      title: 'Elegir un respaldo',
+      properties: ['openFile'],
+      filters: [{ name: 'Respaldos', extensions: ['zip'] }],
+      defaultPath: registroRespaldos.carpetaNube(db) ?? rutas.respaldosLocales
+    }
+    const v = ventanaActual()
+    const r = v ? await dialog.showOpenDialog(v, opciones) : await dialog.showOpenDialog(opciones)
+    return r.canceled || r.filePaths.length === 0 ? null : r.filePaths[0]
+  })
+  manejar('respaldos:vistaRestauracion', (ruta) => respaldos.vistaRestauracion(ctx, ruta))
+  manejar('respaldos:restaurar', async (ruta, contrasena) => {
+    if (!usuarios.verificarDuena(db, contrasena)) throw new ErrorDeNegocio('La contraseña de la dueña no es correcta.')
+    try {
+      await respaldos.restaurarRespaldo(ctx, ruta, obtenerSesion(), sistema.cerrarBase)
+    } catch (error) {
+      // Si la base ya se cerró, el programa tiene que reiniciarse igual.
+      if ((error as { baseCerrada?: boolean }).baseCerrada) sistema.reiniciar(mensajeParaUsuario(error))
+      throw error
+    }
+    sistema.reiniciar()
+  })
+  manejar('respaldos:confirmarNube', (archivo) => registroRespaldos.confirmarNube(db, obtenerSesion(), archivo))
 
   // Reportes: nivel "duena" (ver logica/nivelesIpc.ts).
   manejar('reportes:ingresos', (periodo) => reportes.reporteIngresos(db, periodo))

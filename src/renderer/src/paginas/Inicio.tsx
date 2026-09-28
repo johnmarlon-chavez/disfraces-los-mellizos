@@ -4,6 +4,7 @@ import { formatearTelefono } from '../../../shared/clientes'
 import { formatearFecha, formatearSoles } from '../../../shared/formato'
 import type { DatosInicio, PedidoInicio, UnidadInicio } from '../../../shared/reportes'
 import { llamar, mensajeDe } from '../api'
+import AvisosRespaldo from '../componentes/respaldos/AvisosRespaldo'
 import { useAvisos } from '../componentes/ui/Avisos'
 import Boton from '../componentes/ui/Boton'
 
@@ -178,6 +179,9 @@ export default function Inicio(): React.JSX.Element {
           </div>
         )}
       </div>
+
+      {/* Respaldos: solo la dueña (la misma condición que el dinero de hoy). */}
+      {d.dinero && <AvisosRespaldo />}
 
       <div className="grid grid-cols-2 gap-3">
         {/* 1. Lo más urgente */}

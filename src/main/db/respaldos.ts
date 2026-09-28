@@ -1,0 +1,69 @@
+// Registro de los intentos de respaldo y configuración de la carpeta en la nube.
+import type Database from 'better-sqlite3'
+import type { IntentoRespaldo, TipoRespaldo } from '../../shared/respaldos'
+import type { Sesion } from '../sesion'
+import { registrarAuditoria } from './auditoria'
+
+export interface NuevoIntento {
+  tipo: TipoRespaldo
+  destino: 'local' | 'nube'
+  archivo: string
+  ok: boolean
+  error: string | null
+  tamano: number | null
+  sha256: string | null
+  fecha: string
+}
+
+export function registrarIntento(db: Database.Database, i: NuevoIntento): void {
+  db.prepare(
+    'INSERT INTO respaldos (fecha, tipo, destino, archivo, ok, error, tamano, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(i.fecha, i.tipo, i.destino, i.archivo, i.ok ? 1 : 0, i.error, i.tamano, i.sha256)
+}
+
+/** Fecha del último respaldo correcto en ese destino (o en cualquiera). */
+export function ultimoOk(db: Database.Database, destino?: 'local' | 'nube'): string | null {
+  const f = destino
+    ? db.prepare<[string], { fecha: string }>('SELECT fecha FROM respaldos WHERE ok = 1 AND destino = ? ORDER BY fecha DESC, id DESC LIMIT 1').get(destino)
+    : db.prepare<[], { fecha: string }>('SELECT fecha FROM respaldos WHERE ok = 1 ORDER BY fecha DESC, id DESC LIMIT 1').get()
+  return f?.fecha ?? null
+}
+
+/**
+ * Último intento que importa para el aviso: el de la nube si hay carpeta elegida (es la copia
+ * que protege de perder la laptop); si no, el local.
+ */
+export function ultimoIntento(db: Database.Database, conNube: boolean): IntentoRespaldo | null {
+  const f = db
+    .prepare<[string], { fecha: string; destino: 'local' | 'nube'; ok: number; error: string | null }>(
+      'SELECT fecha, destino, ok, error FROM respaldos WHERE destino = ? ORDER BY fecha DESC, id DESC LIMIT 1'
+    )
+    .get(conNube ? 'nube' : 'local')
+  return f ? { fecha: f.fecha, destino: f.destino, ok: f.ok === 1, error: f.error } : null
+}
+
+export function carpetaNube(db: Database.Database): string | null {
+  const f = db.prepare<[], { carpeta_respaldo: string }>('SELECT carpeta_respaldo FROM configuracion WHERE id = 1').get()
+  return f?.carpeta_respaldo ? f.carpeta_respaldo : null
+}
+
+export function guardarCarpetaNube(db: Database.Database, carpeta: string, sesion: Sesion | null): void {
+  db.transaction(() => {
+    const antes = carpetaNube(db)
+    db.prepare('UPDATE configuracion SET carpeta_respaldo = ? WHERE id = 1').run(carpeta)
+    registrarAuditoria(db, sesion, 'carpeta_respaldo_cambiada', 'configuracion', 1, { antes, despues: carpeta })
+  }).immediate()
+}
+
+export function confirmadoNubeEn(db: Database.Database): string | null {
+  const f = db.prepare<[], { en: string | null }>('SELECT respaldo_nube_confirmado_en AS en FROM configuracion WHERE id = 1').get()
+  return f?.en ?? null
+}
+
+/** La dueña vio en su celular que el respaldo llegó a la nube. */
+export function confirmarNube(db: Database.Database, sesion: Sesion | null, archivo: string, ahora = new Date()): void {
+  db.transaction(() => {
+    db.prepare('UPDATE configuracion SET respaldo_nube_confirmado_en = ? WHERE id = 1').run(ahora.toISOString())
+    registrarAuditoria(db, sesion, 'respaldo_nube_confirmado', 'configuracion', 1, { archivo })
+  }).immediate()
+}

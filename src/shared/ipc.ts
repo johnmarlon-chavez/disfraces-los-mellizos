@@ -4,6 +4,7 @@
 import type { AutorizacionDuena } from './autorizacion'
 import type { Cuenta, DatosPrimerUso, EstadoAcceso, ResumenSoporte } from './contrasenas'
 import type { DatosClaveSoporte, EstadoSoporte } from './soporte'
+import type { AvisosRespaldo, EstadoRespaldos, Manifiesto, ResultadoRespaldo, VistaRestauracion } from './respaldos'
 import type {
   CalendarioOcupacion,
   DatosInicio,
@@ -104,6 +105,21 @@ export interface CanalesIpc {
   'acceso:nuevoCodigo': { args: [contrasena: string]; resultado: string }
   'acceso:avisoVisto': { args: []; resultado: void }
   'acceso:resumenSoporte': { args: []; resultado: ResumenSoporte }
+
+  // Respaldos: solo la dueña.
+  'respaldos:estado': { args: []; resultado: EstadoRespaldos }
+  'respaldos:avisos': { args: []; resultado: AvisosRespaldo }
+  'respaldos:hacerAhora': { args: []; resultado: ResultadoRespaldo }
+  /** Abre el diálogo para elegir la carpeta; la valida y la guarda. null si se canceló. */
+  'respaldos:elegirCarpeta': { args: []; resultado: string | null }
+  'respaldos:usarCarpeta': { args: [carpeta: string]; resultado: void }
+  'respaldos:abrirCarpeta': { args: [cual: 'nube' | 'local' | 'datos']; resultado: void }
+  'respaldos:probar': { args: [ruta: string]; resultado: Manifiesto }
+  'respaldos:elegirArchivo': { args: []; resultado: string | null }
+  'respaldos:vistaRestauracion': { args: [ruta: string]; resultado: VistaRestauracion }
+  /** Restaura y reinicia el programa. */
+  'respaldos:restaurar': { args: [ruta: string, contrasenaDuena: string]; resultado: void }
+  'respaldos:confirmarNube': { args: [archivo: string]; resultado: void }
 
   // Solo existen en la ventana de soporte (--restablecer-duena, --definir-clave-soporte).
   'soporte:estado': { args: []; resultado: EstadoSoporte }
@@ -237,6 +253,24 @@ export interface ApiDisfraces {
     nuevoCodigo: Metodo<'acceso:nuevoCodigo'>
     avisoVisto: Metodo<'acceso:avisoVisto'>
     resumenSoporte: Metodo<'acceso:resumenSoporte'>
+  }
+  respaldos: {
+    estado: Metodo<'respaldos:estado'>
+    avisos: Metodo<'respaldos:avisos'>
+    hacerAhora: Metodo<'respaldos:hacerAhora'>
+    elegirCarpeta: Metodo<'respaldos:elegirCarpeta'>
+    usarCarpeta: Metodo<'respaldos:usarCarpeta'>
+    abrirCarpeta: Metodo<'respaldos:abrirCarpeta'>
+    probar: Metodo<'respaldos:probar'>
+    elegirArchivo: Metodo<'respaldos:elegirArchivo'>
+    vistaRestauracion: Metodo<'respaldos:vistaRestauracion'>
+    restaurar: Metodo<'respaldos:restaurar'>
+    confirmarNube: Metodo<'respaldos:confirmarNube'>
+  }
+  /** Avisos del main a la ventana. Devuelven la función para dejar de escuchar. */
+  eventos: {
+    /** Al cerrar el programa: se está guardando el respaldo. */
+    alGuardarRespaldo: (fn: () => void) => () => void
   }
   soporte: {
     estado: Metodo<'soporte:estado'>

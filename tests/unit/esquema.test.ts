@@ -49,6 +49,7 @@ describe('esquema inicial', () => {
         'pagos',
         'pendientes_confeccion',
         'piezas',
+        'respaldos',
         'soporte',
         'unidades',
         'usuarios'

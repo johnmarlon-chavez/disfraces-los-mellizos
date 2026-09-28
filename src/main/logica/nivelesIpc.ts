@@ -29,13 +29,14 @@ const SOLO_DUENA: ReadonlySet<NombreCanal> = new Set<NombreCanal>([
 
 export function nivelDeCanal(canal: NombreCanal): NivelAcceso {
   if (PUBLICOS.has(canal)) return 'publico'
-  if (SOLO_DUENA.has(canal) || canal.startsWith('reportes:')) return 'duena'
+  if (SOLO_DUENA.has(canal) || canal.startsWith('reportes:') || canal.startsWith('respaldos:')) return 'duena'
   return 'sesion'
 }
 
 /** Qué hace la dueña en cada canal "solo dueña", para el mensaje de error. */
 export function accionDeCanal(canal: NombreCanal): string {
   if (canal.startsWith('reportes:')) return 'ver los reportes'
+  if (canal.startsWith('respaldos:')) return 'manejar los respaldos'
   if (canal === 'config:actualizar') return 'cambiar la configuración'
   if (canal === 'acceso:avisoVisto' || canal === 'acceso:resumenSoporte') return 'ver los avisos de soporte'
   return 'cambiar las contraseñas'

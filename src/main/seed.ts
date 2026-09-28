@@ -13,7 +13,8 @@ import { abrirBaseDeDatos } from './db/conexion'
 import { cancelarPedido, obtenerPedido, asignarUnidades, crearPedido } from './db/pedidos'
 import { devolver, entregar, liquidar } from './db/entregas'
 import type { DatosEntrega, UnidadADevolver } from '../shared/entregas'
-import { obtenerRutas } from './rutas'
+import { carpetaDatosAnterior, carpetaDatosElegida, prepararRutas } from './rutas'
+import { trasladarDatos } from './traslado'
 
 interface ModeloSemilla {
   nombre: string
@@ -332,13 +333,20 @@ function apartarBaseActual(rutaBase: string): string | null {
 }
 
 // Cualquier error termina el proceso: sin ventanas, Electron se quedaría abierto para siempre.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   let db: Database.Database | null = null
   try {
-    const rutas = obtenerRutas()
-    if (app.isPackaged || !basename(rutas.carpetaDatos).endsWith('-dev')) {
+    const carpeta = carpetaDatosElegida()
+    if (app.isPackaged || !basename(carpeta).endsWith('-dev')) {
       throw new Error('El seed solo se usa con la base de desarrollo (carpeta SistemaDisfraces-dev).')
     }
+    // Igual que la app: si los datos de desarrollo siguen en Documentos, primero se trasladan.
+    if (!process.env.DISFRACES_DATOS_DIR) {
+      const traslado = await trasladarDatos(carpetaDatosAnterior(), carpeta)
+      if (traslado.estado === 'trasladado') console.log(`Datos trasladados de ${traslado.desde} a ${traslado.hacia}`)
+      if (traslado.estado === 'fallo') throw traslado.error
+    }
+    const rutas = prepararRutas(carpeta)
     if (process.argv.includes('--reiniciar')) {
       const apartada = apartarBaseActual(rutas.baseDeDatos)
       if (apartada) console.log(`Base anterior guardada como ${apartada}`)

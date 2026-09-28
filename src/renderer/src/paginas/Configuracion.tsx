@@ -5,6 +5,7 @@ import { formatearFecha, formatearHora, formatearSoles } from '../../../shared/f
 import { llamar, mensajeDe } from '../api'
 import { CodigoGrande } from '../componentes/acceso/AsistentePrimerUso'
 import CampoContrasena, { errorDeNueva } from '../componentes/acceso/CampoContrasena'
+import PanelRespaldos from '../componentes/respaldos/PanelRespaldos'
 import { useAvisos } from '../componentes/ui/Avisos'
 import Boton from '../componentes/ui/Boton'
 import CampoPrecio from '../componentes/ui/CampoPrecio'
@@ -317,6 +318,10 @@ export default function Configuracion(): React.JSX.Element {
           {/* La key cambia cuando llegan los valores guardados: el formulario se reinicia con ellos. */}
           <ReglasDelNegocio key={JSON.stringify(estado.config)} config={estado.config} onGuardado={() => setVersion((v) => v + 1)} />
 
+          <Tarjeta titulo="Respaldos">
+            <PanelRespaldos />
+          </Tarjeta>
+
           <Tarjeta titulo="Cuentas y contraseñas">
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-8">
               <CambiarContrasena cuenta="duena" />
@@ -332,7 +337,17 @@ export default function Configuracion(): React.JSX.Element {
               <dt className="font-semibold">Nombre de la tienda</dt>
               <dd>{estado.config.nombreTienda}</dd>
               <dt className="font-semibold">Carpeta de datos</dt>
-              <dd className="break-all">{estado.info.carpetaDatos}</dd>
+              <dd className="break-all">
+                {estado.info.carpetaDatos}{' '}
+                <button
+                  type="button"
+                  className="text-base text-blue-800 underline"
+                  onClick={() => void window.api.respaldos.abrirCarpeta('datos')}
+                >
+                  Abrir
+                </button>
+                <span className="block text-base text-slate-600">No se sincroniza con la nube a propósito: la base de datos no debe subirse mientras se usa.</span>
+              </dd>
               <dt className="font-semibold">Versión del programa</dt>
               <dd>{estado.info.version}</dd>
               <dt className="font-semibold">Clave de soporte</dt>

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router'
 import App from './App'
 import PantallaSoporte from './componentes/acceso/PantallaSoporte'
+import GuardandoRespaldo from './componentes/respaldos/GuardandoRespaldo'
 import { ProveedorSesion } from './componentes/acceso/Sesion'
 import { ProveedorAutorizacionDuena } from './componentes/ui/AutorizacionDuena'
 import { ProveedorAvisos } from './componentes/ui/Avisos'
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')!).render(
     </StrictMode>
   ) : (
     <StrictMode>
+      <GuardandoRespaldo />
       <HashRouter>
         <ProveedorAvisos>
           {/* Sin sesión no se monta nada de lo de abajo: al cerrarla se cierran también los diálogos. */}
