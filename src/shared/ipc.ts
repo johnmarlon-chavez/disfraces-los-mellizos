@@ -3,7 +3,7 @@
 // del main usan estos mismos tipos, así que cualquier desajuste falla al compilar.
 import type { AutorizacionDuena } from './autorizacion'
 import type { Cuenta, DatosPrimerUso, EstadoAcceso, ResumenSoporte } from './contrasenas'
-import type { EstadoSoporte } from './soporte'
+import type { DatosClaveSoporte, EstadoSoporte } from './soporte'
 import type {
   CalendarioOcupacion,
   DatosInicio,
@@ -107,7 +107,7 @@ export interface CanalesIpc {
 
   // Solo existen en la ventana de soporte (--restablecer-duena, --definir-clave-soporte).
   'soporte:estado': { args: []; resultado: EstadoSoporte }
-  'soporte:definirClave': { args: [actual: string | null, nueva: string]; resultado: void }
+  'soporte:definirClave': { args: [datos: DatosClaveSoporte]; resultado: void }
   'soporte:restablecer': { args: [clave: string]; resultado: string }
 
   'modelos:listar': { args: []; resultado: ResumenModelo[] }

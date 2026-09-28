@@ -3,7 +3,7 @@
 // Cada uso, con éxito o no, queda en auditoría (entidad "soporte", sin usuario).
 import bcrypt from 'bcryptjs'
 import type Database from 'better-sqlite3'
-import { problemaDeClaveSoporte, type EstadoSoporte } from '../../shared/soporte'
+import { problemaDeClaveSoporte, type DatosClaveSoporte, type EstadoSoporte } from '../../shared/soporte'
 import { ErrorDeNegocio } from '../errores'
 import {
   INTENTOS_ANTES_DE_BLOQUEO,
@@ -13,7 +13,7 @@ import {
   type ContadorIntentos
 } from '../logica/acceso'
 import { registrarAuditoria } from './auditoria'
-import { hayCuentas, rondasBcrypt, restablecerCodigoDuena } from './usuarios'
+import { hayCuentas, rondasBcrypt, restablecerCodigoDuena, verificarDuena } from './usuarios'
 
 interface FilaSoporte {
   clave_hash: string | null
@@ -82,25 +82,51 @@ function exigirClave(db: Database.Database, clave: string, herramienta: string, 
 }
 
 /**
- * Define la clave de soporte (al instalar) o la cambia. Si ya hay una, hace falta la actual:
- * así nadie puede reemplazarla para usar la herramienta.
+ * Define la clave de soporte (al instalar) o la cambia. Nadie puede definirla ni reemplazarla
+ * para después usar la herramienta:
+ * - si ya hay una, hace falta la actual;
+ * - si todavía no hay y las cuentas ya existen, hace falta la contraseña de la dueña
+ *   (con su contador de intentos). Solo sin cuentas (recién instalado) basta con elegirla.
+ * Orden: primero las reglas de formato (no revelan nada), luego la autorización y recién entonces
+ * la comparación con las contraseñas de las cuentas, que sin autorización serviría para adivinarlas.
  */
-export function definirClaveSoporte(db: Database.Database, actual: string | null, nueva: string, ahora = new Date()): void {
-  const definida = !!fila(db).clave_hash
-  if (definida) exigirClave(db, actual ?? '', 'definir_clave', ahora)
-  const problema = problemaDeClaveSoporte(nueva)
+export function definirClaveSoporte(db: Database.Database, datos: DatosClaveSoporte, ahora = new Date()): void {
+  const problema = problemaDeClaveSoporte(datos.nueva)
   if (problema) throw new ErrorDeNegocio(problema)
+  const definida = !!fila(db).clave_hash
+  if (definida) exigirClave(db, datos.actual ?? '', 'definir_clave', ahora)
+  else if (hayCuentas(db)) exigirContrasenaDuena(db, datos.contrasenaDuena ?? '', ahora)
   const cuentas = db.prepare<[], { contrasena_hash: string }>('SELECT contrasena_hash FROM usuarios').all()
-  if (cuentas.some((c) => bcrypt.compareSync(nueva, c.contrasena_hash))) {
+  if (cuentas.some((c) => bcrypt.compareSync(datos.nueva, c.contrasena_hash))) {
     throw new ErrorDeNegocio('La clave de soporte no puede ser igual a la contraseña de la dueña ni a la de Trabajadores.')
   }
-  const hash = bcrypt.hashSync(nueva, rondasBcrypt())
+  const hash = bcrypt.hashSync(datos.nueva, rondasBcrypt())
   db.transaction(() => {
     db.prepare(
       'UPDATE soporte SET clave_hash = ?, definida_en = ?, intentos_fallidos = 0, bloqueos = 0, bloqueado_hasta = NULL WHERE id = 1'
     ).run(hash, ahora.toISOString())
-    auditar(db, definida ? 'soporte_clave_cambiada' : 'soporte_clave_definida')
+    auditar(db, definida ? 'soporte_clave_cambiada' : 'soporte_clave_definida', { conContrasenaDuena: !definida && hayCuentas(db) })
   }).immediate()
+}
+
+/** Primera definición con las cuentas ya creadas: la contraseña de la dueña, con su contador de intentos. */
+function exigirContrasenaDuena(db: Database.Database, contrasena: string, ahora: Date): void {
+  if (!contrasena) {
+    auditar(db, 'soporte_sin_contrasena_duena')
+    throw new ErrorDeNegocio('Las cuentas ya existen: para definir la clave de soporte hace falta la contraseña de la dueña.')
+  }
+  let correcta: boolean
+  try {
+    correcta = verificarDuena(db, contrasena, ahora)
+  } catch (error) {
+    // Cuenta de la dueña bloqueada por intentos: también queda constancia.
+    auditar(db, 'soporte_contrasena_duena_incorrecta', { bloqueada: true })
+    throw error
+  }
+  if (!correcta) {
+    auditar(db, 'soporte_contrasena_duena_incorrecta', { bloqueada: false })
+    throw new ErrorDeNegocio('La contraseña de la dueña no es correcta.')
+  }
 }
 
 /** --restablecer-duena: con la clave de soporte correcta, código de recuperación nuevo para la dueña. */

@@ -245,6 +245,8 @@ Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún da
 3. En la ventana "Definir la clave de soporte", escribir la clave dos veces:
    - al menos 12 caracteres, con las mismas reglas que las contraseñas;
    - distinta de la contraseña de la dueña y de la de Trabajadores.
+   - **Si las cuentas ya existen**, la dueña debe escribir además su contraseña para autorizarla. Sin ella no se define, así que nadie puede adelantarse a definir la clave para usar la herramienta. Esos intentos cuentan para el contador de la dueña.
+   - Si se define antes del asistente de primer uso (sin cuentas), no hace falta.
 4. Guardar la clave **fuera de la laptop**, en el gestor de contraseñas del técnico. No anotarla en la tienda ni decírsela a nadie.
 - Para cambiarla más adelante se usa la misma herramienta, que entonces pide la clave actual. Así nadie puede reemplazarla para usar la herramienta.
 - En desarrollo: `npm run definir-clave-soporte`.
@@ -263,7 +265,8 @@ Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún da
 
 **Auditoría de soporte** (entidad `soporte`, sin usuario). Cada uso queda registrado, con éxito o no:
 - `soporte_herramienta_abierta`: cada vez que se abre una herramienta;
-- `soporte_clave_definida`, `soporte_clave_cambiada`;
+- `soporte_clave_definida` (con `conContrasenaDuena`), `soporte_clave_cambiada`;
+- `soporte_sin_contrasena_duena`, `soporte_contrasena_duena_incorrecta`: primera definición sin la contraseña de la dueña o con una incorrecta;
 - `soporte_clave_incorrecta`, `soporte_bloqueado`, `soporte_intento_bloqueado`;
 - `soporte_sin_clave`: intento sin clave definida;
 - `codigo_restablecido_soporte`;
@@ -272,6 +275,7 @@ Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún da
 **Cómo está hecho:**
 - Las herramientas abren una ventana pequeña (`#/soporte/restablecer` o `#/soporte/definir-clave`) en la que el main registra solo los canales `soporte:*` (`registrarManejadoresSoporte`); el resto del programa no existe en ese modo.
 - En la app normal, los canales `soporte:*` no están registrados.
+- `definirClaveSoporte` valida en este orden: formato de la clave, autorización (clave actual o contraseña de la dueña) y recién entonces la comparación con las contraseñas de las cuentas. Sin autorización, esa comparación serviría para adivinar las contraseñas.
 
 ## Respaldos
 - Al cerrar la app, respaldar en la carpeta de respaldo configurada (por defecto una carpeta sincronizada con Google Drive o OneDrive), conservando los últimos 30 respaldos con fecha en el nombre.

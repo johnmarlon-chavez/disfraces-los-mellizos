@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { hayDesbordeHorizontal, lanzarApp, type AppDePrueba } from './ayudante'
+import { CONTRASENA_DUENA, CONTRASENA_TRABAJADORES, hayDesbordeHorizontal, lanzarApp, type AppDePrueba } from './ayudante'
 
 const CLAVE = 'tecnico de confianza 2026'
 let carpeta = ''
@@ -39,7 +39,7 @@ test('sin clave de soporte definida, --restablecer-duena no hace nada', async ()
   await expect(a.ventana.getByLabel('Clave de soporte', { exact: true })).toHaveCount(0)
 })
 
-test('el técnico define la clave de soporte con --definir-clave-soporte', async () => {
+test('el técnico define la clave de soporte con --definir-clave-soporte, autorizada por la dueña', async () => {
   const a = await herramienta('--definir-clave-soporte')
   const v = a.ventana
   await expect(v.getByRole('heading', { name: 'Definir la clave de soporte' })).toBeVisible()
@@ -47,8 +47,14 @@ test('el técnico define la clave de soporte con --definir-clave-soporte', async
   await v.getByLabel('Repita la clave de soporte nueva', { exact: true }).fill('corta')
   await v.getByRole('button', { name: 'Guardar clave' }).click()
   await expect(v.getByRole('alert')).toContainText('al menos 12 caracteres')
+  // Las cuentas ya existen: sin la contraseña de la dueña no se puede definir
+  await expect(v.getByText('la dueña debe autorizar la clave de soporte')).toBeVisible()
   await v.getByLabel('Clave de soporte nueva', { exact: true }).fill(CLAVE)
   await v.getByLabel('Repita la clave de soporte nueva', { exact: true }).fill(CLAVE)
+  await v.getByLabel('Contraseña de la dueña', { exact: true }).fill(CONTRASENA_TRABAJADORES)
+  await v.getByRole('button', { name: 'Guardar clave' }).click()
+  await expect(v.getByRole('alert')).toContainText('La contraseña de la dueña no es correcta.')
+  await v.getByLabel('Contraseña de la dueña', { exact: true }).fill(CONTRASENA_DUENA)
   await v.getByRole('button', { name: 'Guardar clave' }).click()
   await expect(v.getByRole('heading', { name: 'Clave de soporte guardada' })).toBeVisible()
   expect(await hayDesbordeHorizontal(v)).toBe(false)

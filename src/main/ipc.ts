@@ -53,7 +53,7 @@ export function registrarManejadoresSoporte(db: Database.Database, info: InfoApp
   const manejar = crearManejar(null)
   manejar('app:info', () => info)
   manejar('soporte:estado', () => soporte.estadoSoporte(db))
-  manejar('soporte:definirClave', (actual, nueva) => soporte.definirClaveSoporte(db, actual, nueva))
+  manejar('soporte:definirClave', (datos) => soporte.definirClaveSoporte(db, datos))
   manejar('soporte:restablecer', (clave) => soporte.restablecerConClave(db, clave))
 }
 

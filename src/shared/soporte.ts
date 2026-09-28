@@ -10,6 +10,17 @@ export interface EstadoSoporte {
   segundosBloqueado: number
 }
 
+/**
+ * Datos para definir o cambiar la clave de soporte.
+ * actual: la clave vigente (para cambiarla). contrasenaDuena: para la primera definición si las
+ * cuentas ya existen.
+ */
+export interface DatosClaveSoporte {
+  actual: string | null
+  contrasenaDuena: string | null
+  nueva: string
+}
+
 /** Motivo por el que la clave de soporte no sirve, o null. Más exigente que una contraseña común. */
 export function problemaDeClaveSoporte(clave: string): string | null {
   if (clave.trim().length < LARGO_MINIMO_CLAVE_SOPORTE) {

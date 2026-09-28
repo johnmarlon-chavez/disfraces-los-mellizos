@@ -116,25 +116,37 @@ function Restablecer({ estado }: { estado: EstadoSoporte }): React.JSX.Element {
 
 function DefinirClave({ estado }: { estado: EstadoSoporte }): React.JSX.Element {
   const [actual, setActual] = useState('')
+  const [contrasenaDuena, setContrasenaDuena] = useState('')
   const [nueva, setNueva] = useState('')
   const [repetida, setRepetida] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [listo, setListo] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const cambiar = estado.claveDefinida
+  // Primera definición con las cuentas ya creadas: la autoriza la dueña con su contraseña.
+  const pideDuena = !cambiar && estado.hayCuentas
 
   const enviar = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
-    if (cambiar && !actual) return setError('Escriba la clave de soporte actual.')
+    // Mismo orden que el main: primero el formato de la clave nueva, luego la autorización.
     const problema = problemaDeClaveSoporte(nueva) ?? (nueva !== repetida ? 'Las dos claves no son iguales. Escríbala otra vez.' : null)
     if (problema) return setError(problema)
+    if (cambiar && !actual) return setError('Escriba la clave de soporte actual.')
+    if (pideDuena && !contrasenaDuena) return setError('Pídale a la dueña que escriba su contraseña.')
     setOcupado(true)
     try {
-      await llamar(window.api.soporte.definirClave(cambiar ? actual : null, nueva))
+      await llamar(
+        window.api.soporte.definirClave({
+          actual: cambiar ? actual : null,
+          contrasenaDuena: pideDuena ? contrasenaDuena : null,
+          nueva
+        })
+      )
       setListo(true)
     } catch (error) {
       setError(mensajeDe(error))
       setActual('')
+      setContrasenaDuena('')
     } finally {
       setOcupado(false)
     }
@@ -163,7 +175,21 @@ function DefinirClave({ estado }: { estado: EstadoSoporte }): React.JSX.Element 
         {cambiar && (
           <CampoContrasena etiqueta="Clave de soporte actual" valor={actual} onCambio={setActual} autoFocus autoComplete="off" />
         )}
-        <CampoContrasena etiqueta="Clave de soporte nueva" valor={nueva} onCambio={setNueva} autoFocus={!cambiar} autoComplete="new-password" />
+        {pideDuena && (
+          <>
+            <p className="rounded-lg bg-amber-50 p-3 text-lg">
+              🔒 Las cuentas ya fueron creadas: la dueña debe autorizar la clave de soporte escribiendo su contraseña.
+            </p>
+            <CampoContrasena etiqueta="Contraseña de la dueña" valor={contrasenaDuena} onCambio={setContrasenaDuena} autoFocus autoComplete="off" />
+          </>
+        )}
+        <CampoContrasena
+          etiqueta="Clave de soporte nueva"
+          valor={nueva}
+          onCambio={setNueva}
+          autoFocus={!cambiar && !pideDuena}
+          autoComplete="new-password"
+        />
         <CampoContrasena etiqueta="Repita la clave de soporte nueva" valor={repetida} onCambio={setRepetida} autoComplete="new-password" />
         <MensajeError texto={error} />
         <div className="flex justify-between gap-3">

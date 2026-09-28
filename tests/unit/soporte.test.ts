@@ -16,6 +16,10 @@ const ahora = new Date('2026-09-28T20:05:00Z') // 15:05 en Lima
 
 let db: Database.Database
 
+/** Definir o cambiar la clave de soporte (actual = null para la primera vez). */
+const definir = (nueva: string, actual: string | null = null, contrasenaDuena: string | null = DUENA): void =>
+  soporte.definirClaveSoporte(db, { actual, contrasenaDuena: actual ? null : contrasenaDuena, nueva }, ahora)
+
 const acciones = (): string[] =>
   (db.prepare("SELECT accion FROM auditoria WHERE entidad = 'soporte' OR accion LIKE '%soporte%' ORDER BY id").all() as { accion: string }[]).map(
     (f) => f.accion
@@ -48,21 +52,44 @@ describe('clave de soporte', () => {
   })
 
   it('se define una vez, como hash, y no puede ser una clave débil ni una contraseña de las cuentas', () => {
-    expect(() => soporte.definirClaveSoporte(db, null, 'corta 12', ahora)).toThrow('al menos 12 caracteres')
-    expect(() => soporte.definirClaveSoporte(db, null, 'aaaaaaaaaaaaaa', ahora)).toThrow('La clave de soporte repite casi siempre lo mismo')
-    expect(() => soporte.definirClaveSoporte(db, null, TRAB, ahora)).toThrow('no puede ser igual a la contraseña')
-    soporte.definirClaveSoporte(db, null, CLAVE, ahora)
+    expect(() => definir('corta 12')).toThrow('al menos 12 caracteres')
+    expect(() => definir('aaaaaaaaaaaaaa')).toThrow('La clave de soporte repite casi siempre lo mismo')
+    expect(() => definir(TRAB)).toThrow('no puede ser igual a la contraseña')
+    definir(CLAVE)
     expect(soporte.estadoSoporte(db).claveDefinida).toBe(true)
     const todo = JSON.stringify(db.prepare('SELECT * FROM soporte').all()) + JSON.stringify(db.prepare('SELECT * FROM auditoria').all())
     expect(todo).not.toContain(CLAVE)
     expect(acciones()).toEqual(['soporte_clave_definida'])
   })
 
+  it('con las cuentas creadas, la primera definición exige la contraseña de la dueña (con su contador)', () => {
+    expect(() => definir(CLAVE, null, null)).toThrow('hace falta la contraseña de la dueña')
+    expect(() => definir(CLAVE, null, TRAB)).toThrow('La contraseña de la dueña no es correcta.')
+    expect(soporte.estadoSoporte(db).claveDefinida).toBe(false)
+    // Cuenta como intento fallido de la dueña
+    expect(db.prepare("SELECT intentos_fallidos FROM usuarios WHERE usuario = 'duena'").get()).toEqual({ intentos_fallidos: 1 })
+    // Sin autorizar no se revela si la clave coincide con una contraseña de las cuentas
+    expect(() => definir(TRAB, null, 'no es la de la dueña')).toThrow('La contraseña de la dueña no es correcta.')
+    for (let i = 0; i < 3; i++) expect(() => definir(CLAVE, null, 'no es')).toThrow()
+    expect(() => definir(CLAVE, null, DUENA)).toThrow('Por seguridad, espere') // la dueña quedó bloqueada
+    expect(acciones()).toEqual([
+      'soporte_sin_contrasena_duena',
+      ...Array(5).fill('soporte_contrasena_duena_incorrecta'),
+      'soporte_contrasena_duena_incorrecta'
+    ])
+  })
+
+  it('recién instalado (sin cuentas) se define sin contraseña de la dueña', () => {
+    const vacia = abrirBaseDeDatos(':memory:')
+    soporte.definirClaveSoporte(vacia, { actual: null, contrasenaDuena: null, nueva: CLAVE }, ahora)
+    expect(soporte.estadoSoporte(vacia).claveDefinida).toBe(true)
+  })
+
   it('para cambiarla hace falta la actual (nadie puede reemplazarla para usar la herramienta)', () => {
-    soporte.definirClaveSoporte(db, null, CLAVE, ahora)
-    expect(() => soporte.definirClaveSoporte(db, null, 'otra clave muy larga', ahora)).toThrow('La clave de soporte no es correcta.')
-    expect(() => soporte.definirClaveSoporte(db, 'no es la clave', 'otra clave muy larga', ahora)).toThrow('La clave de soporte no es correcta.')
-    soporte.definirClaveSoporte(db, CLAVE, 'otra clave muy larga', ahora)
+    definir(CLAVE)
+    expect(() => definir('otra clave muy larga')).toThrow('La clave de soporte no es correcta.')
+    expect(() => definir('otra clave muy larga', 'no es la clave')).toThrow('La clave de soporte no es correcta.')
+    definir('otra clave muy larga', CLAVE)
     expect(() => soporte.restablecerConClave(db, CLAVE, ahora)).toThrow('no es correcta')
     expect(soporte.restablecerConClave(db, 'otra clave muy larga', ahora)).toMatch(/^[A-Z2-9]{4}-/)
     expect(acciones()).toEqual([
@@ -76,7 +103,7 @@ describe('clave de soporte', () => {
   })
 
   it('con la clave correcta: código nuevo, cuenta desbloqueada y aviso pendiente para la dueña', () => {
-    soporte.definirClaveSoporte(db, null, CLAVE, ahora)
+    definir(CLAVE)
     const codigo = soporte.restablecerConClave(db, CLAVE, ahora)
     expect(usuarios.avisoRestablecimiento(db)).toBe(ahora.toISOString())
     expect(usuarios.recuperarDuena(db, codigo, 'diablada de puno', ahora).sesion.rol).toBe('admin')
@@ -84,7 +111,7 @@ describe('clave de soporte', () => {
   })
 
   it('límite de intentos propio: 5 fallos bloquean, y cada intento queda en auditoría', () => {
-    soporte.definirClaveSoporte(db, null, CLAVE, ahora)
+    definir(CLAVE)
     for (let i = 0; i < 4; i++) expect(() => soporte.restablecerConClave(db, 'intento', ahora)).toThrow('La clave de soporte no es correcta.')
     expect(() => soporte.restablecerConClave(db, 'intento', ahora)).toThrow('Se equivocó 5 veces. Por seguridad, espere 60 segundos')
     expect(() => soporte.restablecerConClave(db, CLAVE, ahora)).toThrow('Por seguridad, espere')
@@ -120,7 +147,7 @@ describe('clave de soporte', () => {
 
 describe('aviso a la dueña', () => {
   it('se muestra en la sesión de la dueña hasta que pulsa "Entendido"', () => {
-    soporte.definirClaveSoporte(db, null, CLAVE, ahora)
+    definir(CLAVE)
     soporte.restablecerConClave(db, CLAVE, ahora)
     const acceso = crearServicioAcceso(db)
     acceso.ingresar('trabajadores', TRAB)
