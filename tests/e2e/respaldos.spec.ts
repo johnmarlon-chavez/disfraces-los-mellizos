@@ -210,3 +210,21 @@ test('restaurar: pide la contraseña, avisa qué se pierde y conserva la contras
   await expect(v.getByText('Cliente 40999888')).toHaveCount(0)
   expect(respaldosEn(join(carpeta, 'respaldos')).some((f) => f.includes('(antes de restaurar)'))).toBe(true)
 })
+
+test('respaldo automático con la app abierta: solo si hubo cambios, sin interrumpir', async () => {
+  abierta = await lanzarApp({ entornoExtra: { DISFRACES_RESPALDO_CADA_MS: '3000' } })
+  const v = abierta.ventana
+  const locales = join(abierta.carpetaDatos, 'respaldos')
+  // El de inicio (base nueva, sin respaldos)
+  await expect.poll(() => respaldosEn(locales).length, { timeout: 10_000 }).toBe(1)
+  // Sin cambios: no se hacen más, aunque pasen los "2 horas" (3 s en esta prueba)
+  await v.waitForTimeout(4500)
+  expect(respaldosEn(locales)).toHaveLength(1)
+  // Con un cambio: se respalda solo, mientras se sigue trabajando
+  await crearPedido(v, '40123456', 'PIA')
+  await irA(v, 'Alquileres')
+  await expect.poll(() => respaldosEn(locales).length, { timeout: 10_000 }).toBe(2)
+  await expect(v.getByText('Guardando respaldo…')).toHaveCount(0)
+  await irA(v, 'Clientes')
+  await expect(v.getByText('Cliente 40123456')).toBeVisible()
+})

@@ -2,7 +2,7 @@
 // Un respaldo es un .zip con datos.db (API de backup de SQLite), fotos\ y manifiesto.json.
 // Se arma y se verifica en memoria, se escribe como .tmp, se vuelve a leer y recién entonces se
 // renombra: nunca queda un archivo a medias. Los viejos se borran solo después de verificar el nuevo.
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -37,7 +37,8 @@ import {
   sobrantesEnNube,
   sobrantesLocales,
   tipoDeError,
-  tocaRecordatorioNube
+  tocaRecordatorioNube,
+  tocaRespaldoAutomatico
 } from './logica/respaldos'
 import type { Rutas } from './rutas'
 import type { Sesion } from './sesion'
@@ -80,7 +81,7 @@ function conteos(db: Database.Database, fotos: number): ConteosRespaldo & { ulti
 
 /** Carpeta temporal dentro de la carpeta de datos (nunca en la nube). */
 function carpetaTemporal(ctx: ContextoRespaldos, nombre: string): string {
-  const ruta = join(ctx.rutas.carpetaDatos, `tmp-${nombre}-${process.pid}-${Date.now()}`)
+  const ruta = join(ctx.rutas.carpetaDatos, `tmp-${nombre}-${process.pid}-${Date.now()}-${randomUUID().slice(0, 8)}`)
   mkdirSync(ruta, { recursive: true })
   return ruta
 }
@@ -251,11 +252,14 @@ export async function crearRespaldo(ctx: ContextoRespaldos, tipo: TipoRespaldo):
       error: error ? MENSAJE_ERROR[tipoDeError(error)] : null,
       tamano: zip?.length ?? null,
       sha256: zip && !error ? sha256(zip) : null,
-      fecha
+      fecha,
+      marca
     })
 
   let zip: Uint8Array | null = null
   let errorArmar: unknown = null
+  // Antes de copiar la base: si algo cambia durante el respaldo, el próximo lo verá como cambio.
+  const marca = registro.marcaCambios(ctx.db)
   try {
     zip = await armarRespaldo(ctx, tipo, instante)
     abrirRespaldo(ctx, zip)
@@ -344,17 +348,33 @@ export async function subirPendiente(ctx: ContextoRespaldos): Promise<IntentoRes
     error: fallo ? MENSAJE_ERROR[tipoDeError(fallo)] : null,
     tamano: zip?.length ?? null,
     sha256: zip && !fallo ? sha256(zip) : null,
-    fecha
+    fecha,
+    marca: null // copia de un respaldo anterior: no dice nada de los cambios de ahora
   })
   return intento('nube', fecha, fallo)
 }
 
-/** Al abrir: respaldo si el último correcto tiene más de 24 h; si no, subir lo pendiente. */
+/**
+ * Al abrir: respaldo si hubo cambios después del último respaldo correcto (se apagó la laptop sin
+ * cerrar el programa) o si el último tiene más de 24 h; si no, subir a la nube lo pendiente.
+ */
 export async function alAbrir(ctx: ContextoRespaldos): Promise<void> {
   const conNube = !!registro.carpetaNube(ctx.db)
   const ultimo = registro.ultimoOk(ctx.db, conNube ? 'nube' : 'local')
-  if (faltaRespaldoAlAbrir(ultimo, ahoraDe(ctx))) await crearRespaldo(ctx, 'inicio')
+  if (faltaRespaldoAlAbrir(ultimo, registro.hayCambios(ctx.db), ahoraDe(ctx))) await crearRespaldo(ctx, 'inicio')
   else await subirPendiente(ctx)
+}
+
+/**
+ * Con la app abierta (se llama cada pocos minutos): respaldo si hubo cambios y pasaron 2 horas
+ * desde el último intento. No muestra nada; si falla, lo avisa Inicio. Devuelve si respaldó.
+ */
+export async function respaldoAutomatico(ctx: ContextoRespaldos, cadaMs?: number): Promise<boolean> {
+  if (!tocaRespaldoAutomatico(registro.ultimoIntentoFecha(ctx.db), registro.hayCambios(ctx.db), ahoraDe(ctx), cadaMs)) {
+    return false
+  }
+  await crearRespaldo(ctx, 'automatico')
+  return true
 }
 
 // ——— Estado para la dueña ———
@@ -563,8 +583,9 @@ function conservarCredenciales(actual: Database.Database, restaurada: Database.D
       .prepare('UPDATE soporte SET clave_hash = ?, definida_en = ?, intentos_fallidos = ?, bloqueos = ?, bloqueado_hasta = ? WHERE id = 1')
       .run(soporte.clave_hash, soporte.definida_en, soporte.intentos_fallidos, soporte.bloqueos, soporte.bloqueado_hasta)
     restaurada.prepare('DELETE FROM respaldos').run()
+    // Sin marca de cambios: la auditoría restaurada tiene otros ids, así que se respaldará de nuevo.
     const insertar = restaurada.prepare(
-      'INSERT INTO respaldos (id, fecha, tipo, destino, archivo, ok, error, tamano, sha256) VALUES (@id, @fecha, @tipo, @destino, @archivo, @ok, @error, @tamano, @sha256)'
+      'INSERT INTO respaldos (id, fecha, tipo, destino, archivo, ok, error, tamano, sha256, marca_cambios) VALUES (@id, @fecha, @tipo, @destino, @archivo, @ok, @error, @tamano, @sha256, NULL)'
     )
     for (const r of respaldos) insertar.run(r)
     restaurada

@@ -9,7 +9,7 @@ export const NOMBRE_NUBE: Record<ServicioNube, string> = {
   icloud: 'iCloud'
 }
 
-export type TipoRespaldo = 'cierre' | 'manual' | 'inicio' | 'antes_de_restaurar' | 'subida_pendiente'
+export type TipoRespaldo = 'cierre' | 'manual' | 'inicio' | 'automatico' | 'antes_de_restaurar' | 'subida_pendiente'
 
 export interface ArchivoRespaldo {
   archivo: string

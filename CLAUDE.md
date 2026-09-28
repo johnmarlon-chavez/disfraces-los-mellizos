@@ -297,6 +297,7 @@ Hace falta acceso al equipo, en persona o por AnyDesk. **No se pierde ningún da
   - al cerrar la app;
   - con el botón "Hacer un respaldo ahora";
   - al abrir la app, si el último respaldo correcto tiene más de 24 horas (por si se apagó la laptop sin cerrar el programa).
+  - **Ajuste antes de la Fase 9:** al abrir, también si **hubo cambios después del último respaldo correcto**. Y **mientras la app está abierta, un respaldo automático cada 2 horas si hubo cambios**, en segundo plano y sin mostrar nada. Si falla, lo avisa Inicio. Así, si la dueña apaga la laptop sin cerrar el programa, lo más que se pierde son 2 horas.
 - **Qué se conserva:**
   - En la carpeta en la nube, **30 días distintos**: todos los respaldos de hoy y, de los días anteriores, el último de cada día.
   - La **copia local** (`%LOCALAPPDATA%\SistemaDisfraces\respaldos\`) guarda los últimos 7.
@@ -345,6 +346,14 @@ Se hace al iniciar la app, antes de abrir la base y con el bloqueo de instancia 
   - Si falla algo, muestra un diálogo nativo con "Reintentar" y "Cerrar igual".
   - Las herramientas de soporte no hacen respaldos.
 - Al abrir, 3 s después de mostrar la ventana, `alAbrir()` hace un respaldo si el último correcto tiene más de 24 h; si no, sube a la nube la copia local pendiente.
+- **"¿Hubo cambios?"** (ajuste antes de la Fase 9):
+  - Toda escritura de la app queda en `auditoria`, así que cada respaldo correcto guarda en `respaldos.marca_cambios` (migración 012) el id más alto de auditoría. No cuentan las acciones que no cambian datos (`ACCIONES_SIN_CAMBIOS` en `logica/respaldos.ts`: inicios de sesión, respaldos, intentos de soporte…).
+  - Hay cambios si la marca actual es mayor que la del último respaldo correcto. Sin marca (respaldos anteriores a la 012, o después de restaurar) se toma como que sí.
+  - **Al agregar una acción de auditoría que no cambia datos, sumarla a `ACCIONES_SIN_CAMBIOS`.** Si no, provocará respaldos de más; nunca de menos.
+- **Respaldo automático:**
+  - `index.ts` revisa cada 5 minutos (`respaldoAutomatico()`) y respalda si hubo cambios y pasaron 2 horas desde el último intento, correcto o no, para no reintentar a cada rato si la nube falla.
+  - Los respaldos en segundo plano (al abrir y automático) van de a uno con `enCola()`, y el de cierre espera al que esté en curso.
+  - `DISFRACES_RESPALDO_CADA_MS` acorta las 2 horas (solo para pruebas E2E).
 - Detección de nube (`logica/respaldos.ts`): variables `OneDrive*`, carpetas "Mi unidad" / "My Drive" / "Google Drive", Dropbox e iCloud. Las sugerencias revisan las unidades D: a Z: y el perfil del usuario.
 - Validación de la carpeta elegida: no puede estar dentro de la carpeta de datos ni contenerla, y se prueba escribir, leer y borrar un archivo.
 - Después de restaurar, la app se reinicia sola (`app.relaunch()`), salvo con `DISFRACES_NO_RELANZAR` (pruebas E2E).

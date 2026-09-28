@@ -27,6 +27,8 @@ export interface OpcionesLanzar {
   carpetaDatos?: string
   /** Argumentos extra, por ejemplo '--restablecer-duena'. */
   args?: string[]
+  /** Variables de entorno extra, por ejemplo DISFRACES_RESPALDO_CADA_MS. */
+  entornoExtra?: Record<string, string>
 }
 
 /** Abre la app compilada con una carpeta de datos temporal y vacía. */
@@ -37,7 +39,7 @@ export async function lanzarApp(opciones: OpcionesLanzar = {}): Promise<AppDePru
   const { ELECTRON_RUN_AS_NODE: _, ...entorno } = process.env
   const app = await electron.launch({
     args: ['.', ...args],
-    env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs), DISFRACES_NO_RELANZAR: '1' } as Record<string, string>
+    env: { ...entorno, DISFRACES_DATOS_DIR: carpetaDatos, DISFRACES_INACTIVIDAD_MS: String(inactividadMs), DISFRACES_NO_RELANZAR: '1', ...opciones.entornoExtra } as Record<string, string>
   })
   const ventana = await app.firstWindow()
   await ventana.waitForLoadState('domcontentloaded')

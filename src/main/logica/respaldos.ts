@@ -145,10 +145,52 @@ export const MENSAJE_ERROR: Record<TipoError, string> = {
   otro: 'ocurrió un problema al escribir el archivo'
 }
 
-/** ¿Hace falta un respaldo al abrir? Si el último correcto tiene más de 24 horas (o no hay ninguno). */
-export function faltaRespaldoAlAbrir(ultimoOk: string | null, ahora: Date): boolean {
-  if (!ultimoOk) return true
+/**
+ * Acciones de auditoría que no cambian los datos del negocio: no cuentan como "hubo cambios"
+ * (si no, cada inicio de sesión o cada respaldo pediría otro respaldo).
+ */
+export const ACCIONES_SIN_CAMBIOS = [
+  'respaldo_creado',
+  'respaldo_nube_confirmado',
+  'inicio_sesion',
+  'cierre_sesion',
+  'sesion_cerrada_inactividad',
+  'cuenta_bloqueada',
+  'aviso_restablecimiento_visto',
+  'datos_trasladados',
+  'traslado_fallido',
+  'soporte_herramienta_abierta',
+  'soporte_sin_clave',
+  'soporte_clave_incorrecta',
+  'soporte_bloqueado',
+  'soporte_intento_bloqueado',
+  'soporte_sin_contrasena_duena',
+  'soporte_contrasena_duena_incorrecta'
+] as const
+
+/**
+ * ¿Hace falta un respaldo al abrir? Si hubo cambios después del último respaldo correcto (por
+ * ejemplo, se apagó la laptop sin cerrar el programa), o si el último tiene más de 24 horas.
+ */
+export function faltaRespaldoAlAbrir(ultimoOk: string | null, hayCambios: boolean, ahora: Date): boolean {
+  if (!ultimoOk || hayCambios) return true
   return ahora.getTime() - new Date(ultimoOk).getTime() > 24 * 60 * 60 * 1000
+}
+
+export const RESPALDO_AUTOMATICO_MS = 2 * 60 * 60 * 1000
+
+/**
+ * Respaldo automático con la app abierta: si hubo cambios y pasaron 2 horas desde el último
+ * intento (correcto o no: si la nube falla, no se reintenta a cada rato).
+ */
+export function tocaRespaldoAutomatico(
+  ultimoIntento: string | null,
+  hayCambios: boolean,
+  ahora: Date,
+  cadaMs = RESPALDO_AUTOMATICO_MS
+): boolean {
+  if (!hayCambios) return false
+  return !ultimoIntento || ahora.getTime() - new Date(ultimoIntento).getTime() >= cadaMs
 }
 
 /**

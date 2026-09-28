@@ -22,7 +22,8 @@ import {
   sobrantesEnNube,
   sobrantesLocales,
   tipoDeError,
-  tocaRecordatorioNube
+  tocaRecordatorioNube,
+  tocaRespaldoAutomatico
 } from '../../src/main/logica/respaldos'
 import {
   abrirRespaldo,
@@ -30,6 +31,7 @@ import {
   avisosRespaldo,
   crearRespaldo,
   estadoRespaldos,
+  respaldoAutomatico,
   restaurarRespaldo,
   subirPendiente,
   sugerirCarpetas,
@@ -120,9 +122,14 @@ describe('carpetas en la nube', () => {
 
   it('cuándo respaldar al abrir, avisar y recordar', () => {
     const ahora = new Date('2026-09-28T15:00:00Z')
-    expect(faltaRespaldoAlAbrir(null, ahora)).toBe(true)
-    expect(faltaRespaldoAlAbrir('2026-09-27T16:00:00Z', ahora)).toBe(false)
-    expect(faltaRespaldoAlAbrir('2026-09-27T14:00:00Z', ahora)).toBe(true)
+    expect(faltaRespaldoAlAbrir(null, false, ahora)).toBe(true)
+    expect(faltaRespaldoAlAbrir('2026-09-27T16:00:00Z', false, ahora)).toBe(false)
+    expect(faltaRespaldoAlAbrir('2026-09-27T16:00:00Z', true, ahora)).toBe(true) // hubo cambios
+    expect(faltaRespaldoAlAbrir('2026-09-27T14:00:00Z', false, ahora)).toBe(true)
+    expect(tocaRespaldoAutomatico(null, true, ahora)).toBe(true)
+    expect(tocaRespaldoAutomatico('2026-09-28T13:30:00Z', true, ahora)).toBe(false) // hace 1,5 h
+    expect(tocaRespaldoAutomatico('2026-09-28T13:00:00Z', true, ahora)).toBe(true) // hace 2 h
+    expect(tocaRespaldoAutomatico('2026-09-28T09:00:00Z', false, ahora)).toBe(false) // sin cambios
     expect(problemaDeRespaldo('2026-09-28T10:00:00Z', true, ahora)).toBe('fallo')
     expect(problemaDeRespaldo('2026-09-25T10:00:00Z', false, ahora)).toBe('viejo')
     expect(problemaDeRespaldo('2026-09-27T10:00:00Z', false, ahora)).toBeNull()
@@ -270,6 +277,60 @@ describe('respaldos en disco', () => {
     reloj = new Date('2026-09-29T16:00:00Z')
     await alAbrir(ctx)
     expect(zipLocal()).toHaveLength(2)
+  })
+
+  it('al abrir: respalda si hubo cambios después del último respaldo (se apagó sin cerrar)', async () => {
+    await crearRespaldo(ctx, 'cierre')
+    expect(registro.hayCambios(ctx.db)).toBe(false)
+    // Iniciar sesión o respaldar no son cambios de datos
+    const codigo = generarCodigoRecuperacion()
+    usuarios.crearCuentas(ctx.db, { contrasenaDuena: DUENA, contrasenaTrabajadores: TRAB, codigoConfirmado: codigo }, codigo)
+    reloj = new Date('2026-09-28T15:30:00Z')
+    await crearRespaldo(ctx, 'manual')
+    usuarios.iniciarSesion(ctx.db, 'trabajadores', TRAB)
+    expect(registro.hayCambios(ctx.db)).toBe(false)
+    reloj = new Date('2026-09-28T16:00:00Z')
+    await alAbrir(ctx)
+    expect(zipLocal()).toHaveLength(2) // sin cambios y hace menos de 24 h: nada nuevo
+    // Un pedido registrado y la laptop apagada sin cerrar: al abrir, respaldo
+    crearPedido('40123456')
+    expect(registro.hayCambios(ctx.db)).toBe(true)
+    reloj = new Date('2026-09-28T17:00:00Z')
+    await alAbrir(ctx)
+    expect(zipLocal()).toHaveLength(3)
+    expect(registro.hayCambios(ctx.db)).toBe(false)
+  })
+
+  it('automático: cada 2 horas y solo si hubo cambios', async () => {
+    await crearRespaldo(ctx, 'inicio') // 10:00 en Lima
+    reloj = new Date('2026-09-28T17:30:00Z') // 2,5 h después, sin cambios
+    expect(await respaldoAutomatico(ctx)).toBe(false)
+    crearPedido('40123456')
+    reloj = new Date('2026-09-28T15:30:00Z') // cambios, pero solo media hora después del último
+    expect(await respaldoAutomatico(ctx)).toBe(false)
+    reloj = new Date('2026-09-28T17:00:00Z') // 2 h después y con cambios
+    expect(await respaldoAutomatico(ctx)).toBe(true)
+    expect(zipLocal()).toContain('Respaldo Disfraces 2026-09-28 12-00-00.zip')
+    reloj = new Date('2026-09-28T19:30:00Z') // 2,5 h más, pero sin cambios nuevos
+    expect(await respaldoAutomatico(ctx)).toBe(false)
+  })
+
+  it('si la nube falla, el automático no reintenta a cada rato, y sube lo pendiente cuando vuelve', async () => {
+    registro.guardarCarpetaNube(ctx.db, join(base, 'sin-drive', 'Mi unidad', 'Respaldos'), null)
+    crearPedido('40123456')
+    expect(await respaldoAutomatico(ctx)).toBe(true)
+    expect(registro.hayCambios(ctx.db)).toBe(false) // la copia local sí se hizo
+    crearPedido('40999888')
+    reloj = new Date('2026-09-28T16:00:00Z') // una hora después: todavía no
+    expect(await respaldoAutomatico(ctx)).toBe(false)
+  })
+
+  it('tras restaurar, el próximo respaldo automático no se salta aunque la auditoría tenga otros ids', async () => {
+    const r = await crearRespaldo(ctx, 'manual')
+    crearPedido('40123456')
+    await restaurarRespaldo(ctx, join(ctx.rutas.respaldosLocales, r.archivo), null, () => ctx.db.close())
+    ctx.db = abrirBaseDeDatos(ctx.rutas.baseDeDatos)
+    expect(registro.hayCambios(ctx.db)).toBe(true)
   })
 
   it('la copia local conserva solo los últimos 7', async () => {

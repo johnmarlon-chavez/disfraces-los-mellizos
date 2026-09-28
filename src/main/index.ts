@@ -9,7 +9,8 @@ import { registrarAperturaSoporte } from './db/soporte'
 import { mensajeParaUsuario } from './errores'
 import { atenderProtocoloFotos, registrarEsquemaFotos } from './fotos'
 import { registrarManejadores, registrarManejadoresSoporte } from './ipc'
-import { alAbrir, crearRespaldo, type ContextoRespaldos } from './respaldos'
+import { RESPALDO_AUTOMATICO_MS } from './logica/respaldos'
+import { alAbrir, crearRespaldo, respaldoAutomatico, type ContextoRespaldos } from './respaldos'
 import { carpetaDatosAnterior, carpetaDatosElegida, prepararRutas, type Rutas } from './rutas'
 import { trasladarDatos, type ResultadoTraslado } from './traslado'
 
@@ -149,16 +150,31 @@ async function iniciar(): Promise<void> {
     evento.preventDefault()
     void respaldarAlCerrar()
   })
-  // Respaldo al abrir si el último correcto tiene más de 24 h; si no, sube lo pendiente.
+  // Respaldo al abrir si hubo cambios desde el último respaldo correcto o si pasaron más de 24 h;
+  // si no, sube a la nube lo pendiente.
   ventana.once('ready-to-show', () => {
-    setTimeout(() => {
-      if (!db || cierreListo) return
-      respaldoEnCurso = alAbrir(ctx).catch((error) => console.error('[respaldos] Falló el respaldo al abrir:', error))
-    }, 3000)
+    setTimeout(() => enCola(() => alAbrir(ctx)), 3000)
   })
+  // Con la app abierta: respaldo automático cada 2 horas si hubo cambios, sin mostrar nada
+  // (si la dueña apaga la laptop sin cerrar el programa, lo más que se pierde son 2 horas).
+  // DISFRACES_RESPALDO_CADA_MS: solo para las pruebas E2E.
+  const cadaMs = Number(process.env.DISFRACES_RESPALDO_CADA_MS) || RESPALDO_AUTOMATICO_MS
+  setInterval(() => enCola(() => respaldoAutomatico(ctx, cadaMs)), Math.min(5 * 60_000, Math.max(250, cadaMs / 4)))
 }
 
 let cerrando = false
+let enCurso = false
+
+/** Respaldos en segundo plano, uno a la vez; el cierre espera al que esté en curso. */
+function enCola(tarea: () => Promise<unknown>): void {
+  if (!db || cierreListo || cerrando || enCurso) return
+  enCurso = true
+  respaldoEnCurso = tarea()
+    .catch((error) => console.error('[respaldos] Falló un respaldo en segundo plano:', error))
+    .finally(() => {
+      enCurso = false
+    })
+}
 
 /** Al cerrar: respaldo con la pantalla "Guardando respaldo…"; si falla, "Reintentar" o "Cerrar igual". */
 async function respaldarAlCerrar(): Promise<void> {
